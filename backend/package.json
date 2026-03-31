@@ -4,7 +4,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon --watch server.js --watch connector.js server.js"
   },
   "dependencies": {
     "express": "5.1.0",

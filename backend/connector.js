@@ -24,20 +24,20 @@
  *     default_ttl="1h" max_ttl="24h"
  */
 
-const VAULT_ADDR = process.env.VAULT_ADDR || "http://vault:8200";
-const VAULT_TOKEN = process.env.VAULT_TOKEN;
-const VAULT_MODE = process.env.VAULT_MODE || "dynamic";
-const VAULT_KV_PATH = process.env.VAULT_KV_PATH || "secret/data/postgres";
-const VAULT_DB_ROLE = process.env.VAULT_DB_ROLE || "app-role";
+const VAULT_ADDR    = process.env.VAULT_ADDR     || 'http://vault:8200';
+const VAULT_TOKEN   = process.env.VAULT_TOKEN;
+const VAULT_MODE    = process.env.VAULT_MODE      || 'dynamic';
+const VAULT_KV_PATH = process.env.VAULT_KV_PATH   || 'secret/data/postgres';
+const VAULT_DB_ROLE = process.env.VAULT_DB_ROLE   || 'app-role';
 
-if (!VAULT_TOKEN) throw new Error("VAULT_TOKEN is not set");
+if (!VAULT_TOKEN) throw new Error('VAULT_TOKEN is not set');
 
 // ---------------------------------------------------------------------------
 // Phase 1 — static credentials from KV v2
 // ---------------------------------------------------------------------------
 async function getKvCredentials() {
   const res = await fetch(`${VAULT_ADDR}/v1/${VAULT_KV_PATH}`, {
-    headers: { "X-Vault-Token": VAULT_TOKEN },
+    headers: { 'X-Vault-Token': VAULT_TOKEN },
   });
 
   if (!res.ok) {
@@ -50,13 +50,13 @@ async function getKvCredentials() {
   if (!secret) throw new Error(`No data found at ${VAULT_KV_PATH}`);
 
   return {
-    host: secret.host || "db",
-    port: Number(secret.port) || 5432,
-    database: secret.database || "appdb",
-    user: secret.username,
+    host:     secret.host     || 'db',
+    port:     Number(secret.port) || 5432,
+    database: secret.database || 'appdb',
+    user:     secret.username,
     password: secret.password,
-    source: "vault-kv",
-    path: VAULT_KV_PATH,
+    source:   'vault-kv',
+    path:     VAULT_KV_PATH,
   };
 }
 
@@ -65,7 +65,7 @@ async function getKvCredentials() {
 // ---------------------------------------------------------------------------
 async function getDynamicCredentials() {
   const res = await fetch(`${VAULT_ADDR}/v1/database/creds/${VAULT_DB_ROLE}`, {
-    headers: { "X-Vault-Token": VAULT_TOKEN },
+    headers: { 'X-Vault-Token': VAULT_TOKEN },
   });
 
   if (!res.ok) {
@@ -77,19 +77,17 @@ async function getDynamicCredentials() {
   const { username, password } = json.data;
   const lease_duration = json.lease_duration;
 
-  console.log(
-    `[connector] Dynamic credentials issued — user: ${username}, TTL: ${lease_duration}s`,
-  );
+  console.log(`[connector] Dynamic credentials issued — user: ${username}, TTL: ${lease_duration}s`);
 
   return {
-    host: "db",
-    port: 5432,
-    database: "appdb",
-    user: username,
+    host:     'db',
+    port:     5432,
+    database: 'appdb',
+    user:     username,
     password: password,
-    source: "vault-dynamic",
-    path: `database/creds/${VAULT_DB_ROLE}`,
-    ttl: lease_duration,
+    source:   'vault-dynamic',
+    path:     `database/creds/${VAULT_DB_ROLE}`,
+    ttl:      lease_duration,
   };
 }
 
@@ -97,7 +95,7 @@ async function getDynamicCredentials() {
 // Exported function — called by server.js
 // ---------------------------------------------------------------------------
 async function getCredentials() {
-  if (VAULT_MODE === "kv") {
+  if (VAULT_MODE === 'kv') {
     return getKvCredentials();
   }
   return getDynamicCredentials();
