@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 
 const STATUS = {
-  loading: { label: 'Checking...', color: '#f59e0b' },
-  connected: { label: 'Connected', color: '#22c55e' },
-  error: { label: 'Disconnected', color: '#ef4444' },
+  loading: { label: 'Checking', tone: 'loading', icon: '...' },
+  connected: { label: 'Connected', tone: 'connected', icon: 'OK' },
+  error: { label: 'Disconnected', tone: 'error', icon: '!!' },
 };
 
 const SUGGESTIONS = [
@@ -18,7 +18,9 @@ export default function App() {
   const [vault, setVault] = useState({ status: 'loading', source: null, path: null, username: null });
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
+  const [lastQuestion, setLastQuestion] = useState('');
   const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState('');
   const answerRef = useRef(null);
 
   useEffect(() => {
@@ -63,31 +65,35 @@ export default function App() {
 
   const ask = async () => {
     if (!question.trim() || asking) return;
+    const nextQuestion = question.trim();
     setAsking(true);
-    setAnswer('');
+    setAskError('');
+    setLastQuestion(nextQuestion);
 
     try {
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question: nextQuestion }),
       });
 
       if (!res.ok) {
-        setAnswer('Error: could not reach the backend.');
+        setAskError('The backend did not return a valid response. Retry after checking the API container.');
         return;
       }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let streamed = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        setAnswer((prev) => prev + decoder.decode(value, { stream: true }));
+        streamed += decoder.decode(value, { stream: true });
+        setAnswer(streamed);
       }
     } catch {
-      setAnswer('Error: request failed.');
+      setAskError('The request failed before the answer stream completed.');
     } finally {
       setAsking(false);
     }
@@ -100,79 +106,138 @@ export default function App() {
     }
   };
 
-  const { label, color } = STATUS[db];
+  const { label, tone, icon } = STATUS[db];
 
-  const vaultColor = vault.status === 'ok' ? '#f59e0b' : vault.status === 'loading' ? '#475569' : '#ef4444';
-  const vaultLabel = vault.status === 'ok' ? vault.source : vault.status === 'loading' ? 'Checking...' : 'Unreachable';
+  const vaultTone = vault.status === 'ok' ? 'vault' : vault.status === 'loading' ? 'loading' : 'error';
+  const vaultLabel = vault.status === 'ok'
+    ? (vault.source === 'vault-dynamic' ? 'Dynamic' : 'Static KV')
+    : vault.status === 'loading' ? 'Checking' : 'Unreachable';
+  const vaultBadge = vault.status === 'ok'
+    ? (vault.source === 'vault-dynamic'
+        ? { label: 'DYNAMIC', cls: 'vault-badge-dynamic' }
+        : { label: 'KV v2', cls: 'vault-badge-kv' })
+    : null;
+  const hasAnswer = Boolean(answer);
 
   return (
     <div className="app">
       <div className="layout">
-
-        {/* Status card */}
-        <div className="card">
-          <h1>Zero Trust Workshop</h1>
-          <div className="status-row">
-            <span className="status-label">PostgreSQL</span>
-            <div className="indicator" style={{ '--color': color }}>
-              <span className="dot" />
-              <span className="indicator-label">{label}</span>
+        <section className="hero card">
+          <div className="eyebrow">Zero Trust Workshop</div>
+          <div className="hero-head">
+            <div>
+              <h1>Interrogate workshop data without leaving the trust boundary.</h1>
+              <p className="hero-copy">
+                Query users, orders, and preferences while tracking the live health of PostgreSQL and Vault.
+              </p>
             </div>
-          </div>
-          <div className="status-row" style={{ marginTop: '1rem' }}>
-            <span className="status-label">Vault</span>
-            <div className="indicator" style={{ '--color': vaultColor }}>
-              <span className="dot" style={{ animationDuration: '1.2s' }} />
-              <div className="vault-detail">
-                <span className="indicator-label">{vaultLabel}</span>
-                {vault.username && (
-                  <span className="vault-meta">{vault.path} · {vault.username}</span>
-                )}
+            <div className="status-panel" aria-label="System status">
+              <div className="status-panel-title">System readiness</div>
+              <div className="status-stack">
+                <div className="status-row">
+                  <span className="status-label">PostgreSQL</span>
+                  <div className={`indicator indicator-${tone}`}>
+                    <span className="indicator-icon" aria-hidden="true">{icon}</span>
+                    <span className="indicator-label">{label}</span>
+                  </div>
+                </div>
+                <div className="status-row">
+                  <span className="status-label">Vault</span>
+                  <div className={`indicator indicator-${vaultTone}`}>
+                    <span className="indicator-icon" aria-hidden="true">{vault.status === 'ok' ? 'VT' : vault.status === 'loading' ? '...' : '!!'}</span>
+                    <div className="vault-detail">
+                      <div className="vault-label-row">
+                        <span className="indicator-label">{vaultLabel}</span>
+                        {vaultBadge && (
+                          <span className={`vault-badge ${vaultBadge.cls}`}>{vaultBadge.label}</span>
+                        )}
+                      </div>
+                      {vault.username && (
+                        <span className="vault-meta">{vault.path} · {vault.username}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Q&A card */}
-        <div className="card qa-card">
-          <h2>Ask about your data</h2>
-
-          <div className="suggestions">
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                className="chip"
-                onClick={() => setQuestion(s)}
-                disabled={asking}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-
-          <div className="input-row">
-            <textarea
-              className="qa-input"
-              rows={2}
-              placeholder="Ask a question about users, orders, or preferences…"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={handleKey}
-              disabled={asking}
-            />
-            <button className="ask-btn" onClick={ask} disabled={asking || !question.trim()}>
-              {asking ? <span className="spinner" /> : 'Ask'}
-            </button>
-          </div>
-
-          {(answer || asking) && (
-            <div className="answer-box" ref={answerRef}>
-              {answer || <span className="thinking">Thinking…</span>}
-              {asking && answer && <span className="cursor" />}
+          <div className="qa-shell">
+            <div className="qa-header">
+              <div>
+                <h2>Ask about your data</h2>
+                <p className="section-copy">Use a prompt below or write a custom question.</p>
+              </div>
+              <div className="composer-tip">Enter to send. Shift+Enter for a new line.</div>
             </div>
-          )}
-        </div>
 
+            <div className="suggestions" aria-label="Suggested prompts">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  className="chip"
+                  onClick={() => setQuestion(s)}
+                  disabled={asking}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+
+            <div className="input-row">
+              <label className="input-group">
+                <span className="input-label">Question</span>
+                <textarea
+                  className="qa-input"
+                  rows={3}
+                  placeholder="Ask a question about users, orders, or preferences..."
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  onKeyDown={handleKey}
+                  disabled={asking}
+                />
+              </label>
+              <button className="ask-btn" onClick={ask} disabled={asking || !question.trim()}>
+                <span className={`spinner ${asking ? 'spinner-visible' : ''}`} aria-hidden="true" />
+                <span>{asking ? 'Streaming' : 'Ask'}</span>
+              </button>
+            </div>
+
+            <div className="answer-section">
+              <div className="answer-header">
+                <div>
+                  <div className="answer-kicker">Latest response</div>
+                  <div className="answer-title">{lastQuestion || 'Ready for your first prompt'}</div>
+                </div>
+                <div className={`answer-state ${askError ? 'answer-state-error' : asking ? 'answer-state-streaming' : hasAnswer ? 'answer-state-ready' : 'answer-state-idle'}`}>
+                  {askError ? 'Retry available' : asking ? 'Streaming now' : hasAnswer ? 'Response captured' : 'Waiting'}
+                </div>
+              </div>
+
+              {!hasAnswer && !asking && !askError && (
+                <div className="answer-empty">
+                  <p>No answer yet. Start with a suggested prompt or ask about spending, preferences, or user activity.</p>
+                </div>
+              )}
+
+              {(hasAnswer || asking) && (
+                <div className="answer-box" ref={answerRef} aria-live="polite">
+                  {answer || <span className="thinking">Thinking...</span>}
+                  {asking && answer && <span className="cursor" />}
+                </div>
+              )}
+
+              {askError && (
+                <div className="answer-error" role="alert">
+                  <span>{askError}</span>
+                  <button className="retry-btn" onClick={ask} disabled={asking || !question.trim()}>
+                    Retry
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );

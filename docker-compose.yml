@@ -53,18 +53,14 @@ services:
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_TOKEN}
+      VAULT_MODE: dynamic
+      VAULT_DB_ROLE: app-role
       VAULT_KV_PATH: secret/data/postgres
       OLLAMA_ADDR: http://ollama:11434
     volumes:
       - ./backend:/app
-      - /app/node_modules
     ports:
       - "3000:3000"
-    depends_on:
-      db:
-        condition: service_healthy
-      vault:
-        condition: service_healthy
     networks:
       - app_network
 
@@ -77,8 +73,6 @@ services:
       VITE_API_URL: http://localhost:3000
     ports:
       - "5173:5173"
-    depends_on:
-      - backend
     networks:
       - app_network
 
