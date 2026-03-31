@@ -12,15 +12,15 @@
  *   vault kv put secret/postgres username=appuser password=apppassword host=db port=5432 database=appdb
  */
 
-const VAULT_ADDR  = process.env.VAULT_ADDR    || 'http://vault:8200';
+const VAULT_ADDR = process.env.VAULT_ADDR || "http://vault:8200";
 const VAULT_TOKEN = process.env.VAULT_TOKEN;
-const VAULT_KV_PATH = process.env.VAULT_KV_PATH || 'secret/data/postgres';
+const VAULT_KV_PATH = process.env.VAULT_KV_PATH || "secret/data/postgres";
 
 async function getCredentials() {
-  if (!VAULT_TOKEN) throw new Error('VAULT_TOKEN is not set');
+  if (!VAULT_TOKEN) throw new Error("VAULT_TOKEN is not set");
 
   const res = await fetch(`${VAULT_ADDR}/v1/${VAULT_KV_PATH}`, {
-    headers: { 'X-Vault-Token': VAULT_TOKEN },
+    headers: { "X-Vault-Token": VAULT_TOKEN },
   });
 
   if (!res.ok) {
@@ -35,13 +35,13 @@ async function getCredentials() {
   if (!secret) throw new Error(`No data found at ${VAULT_KV_PATH}`);
 
   return {
-    host:     secret.host     || 'db',
-    port:     Number(secret.port) || 5432,
-    database: secret.database || 'appdb',
-    user:     secret.username,
+    host: secret.host || "db",
+    port: Number(secret.port) || 5432,
+    database: secret.database || "appdb",
+    user: secret.username,
     password: secret.password,
-    source:   'vault-kv',
-    path:     VAULT_KV_PATH,
+    source: "vault-kv",
+    path: VAULT_KV_PATH,
   };
 }
 

@@ -80,13 +80,13 @@ app.get("/credentials", async (req, res) => {
   try {
     const creds = await getCredentials();
     res.json({
-      source:   creds.source,
-      path:     creds.path,
-      host:     creds.host,
-      port:     creds.port,
+      source: creds.source,
+      path: creds.path,
+      host: creds.host,
+      port: creds.port,
       database: creds.database,
       username: creds.user,
-      password: '***',
+      password: "***",
     });
   } catch (err) {
     res.status(502).json({ error: err.message });
