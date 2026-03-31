@@ -66,14 +66,14 @@ SQL
 # ---------------------------------------------------------------------------
 echo "==> Seeding users from data/users.json..."
 jq -c '.[]' "${DATA_DIR}/users.json" | while IFS= read -r row; do
-  id=$(echo "$row"         | jq -r '.id')
+  id=$(echo "$row" | jq -r '.id')
   first_name=$(echo "$row" | jq -r '.first_name')
-  last_name=$(echo "$row"  | jq -r '.last_name')
-  email=$(echo "$row"      | jq -r '.email')
-  phone=$(echo "$row"      | jq -r '.phone')
-  city=$(echo "$row"       | jq -r '.city')
-  country=$(echo "$row"    | jq -r '.country')
-  joined=$(echo "$row"     | jq -r '.joined')
+  last_name=$(echo "$row" | jq -r '.last_name')
+  email=$(echo "$row" | jq -r '.email')
+  phone=$(echo "$row" | jq -r '.phone')
+  city=$(echo "$row" | jq -r '.city')
+  country=$(echo "$row" | jq -r '.country')
+  joined=$(echo "$row" | jq -r '.joined')
 
   $PSQL -c "
     INSERT INTO users (id, first_name, last_name, email, phone, city, country, joined)
@@ -85,7 +85,7 @@ jq -c '.[]' "${DATA_DIR}/users.json" | while IFS= read -r row; do
       city       = EXCLUDED.city,
       country    = EXCLUDED.country,
       joined     = EXCLUDED.joined;
-  " > /dev/null
+  " >/dev/null
   echo "    user: ${first_name} ${last_name}"
 done
 
@@ -94,17 +94,17 @@ done
 # ---------------------------------------------------------------------------
 echo "==> Seeding orders from data/activity.json..."
 jq -c '.orders[]' "${DATA_DIR}/activity.json" | while IFS= read -r row; do
-  user_id=$(echo "$row"    | jq -r '.user_id')
-  item=$(echo "$row"       | jq -r '.item' | sed "s/'/''/g")
-  category=$(echo "$row"   | jq -r '.category')
-  quantity=$(echo "$row"   | jq -r '.quantity')
-  price=$(echo "$row"      | jq -r '.price')
+  user_id=$(echo "$row" | jq -r '.user_id')
+  item=$(echo "$row" | jq -r '.item' | sed "s/'/''/g")
+  category=$(echo "$row" | jq -r '.category')
+  quantity=$(echo "$row" | jq -r '.quantity')
+  price=$(echo "$row" | jq -r '.price')
   ordered_at=$(echo "$row" | jq -r '.ordered_at')
 
   $PSQL -c "
     INSERT INTO orders (user_id, item, category, quantity, price, ordered_at)
     VALUES (${user_id}, '${item}', '${category}', ${quantity}, ${price}, '${ordered_at}');
-  " > /dev/null
+  " >/dev/null
   echo "    order: [user ${user_id}] ${item}"
 done
 
@@ -113,15 +113,15 @@ done
 # ---------------------------------------------------------------------------
 echo "==> Seeding preferences from data/activity.json..."
 jq -c '.preferences[]' "${DATA_DIR}/activity.json" | while IFS= read -r row; do
-  user_id=$(echo "$row"  | jq -r '.user_id')
+  user_id=$(echo "$row" | jq -r '.user_id')
   category=$(echo "$row" | jq -r '.category')
-  value=$(echo "$row"    | jq -r '.value' | sed "s/'/''/g")
+  value=$(echo "$row" | jq -r '.value' | sed "s/'/''/g")
 
   $PSQL -c "
     INSERT INTO preferences (user_id, category, value)
     VALUES (${user_id}, '${category}', '${value}')
     ON CONFLICT DO NOTHING;
-  " > /dev/null
+  " >/dev/null
   echo "    preference: [user ${user_id}] ${category}: ${value}"
 done
 

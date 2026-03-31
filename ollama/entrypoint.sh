@@ -9,7 +9,7 @@ OLLAMA_PID=$!
 
 # Wait until the API is ready
 echo "==> Waiting for Ollama to start..."
-until curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
+until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do
   sleep 1
 done
 echo "==> Ollama is ready."

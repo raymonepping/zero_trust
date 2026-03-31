@@ -1,9 +1,9 @@
-const express = require('express');
-const { Pool } = require('pg');
+const express = require("express");
+const { Pool } = require("pg");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const OLLAMA_ADDR = process.env.OLLAMA_ADDR || 'http://ollama:11434';
+const OLLAMA_ADDR = process.env.OLLAMA_ADDR || "http://ollama:11434";
 
 app.use(express.json());
 
@@ -12,31 +12,31 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
-app.get('/', async (req, res) => {
+app.get("/", async (req, res) => {
   try {
-    await pool.query('SELECT 1');
-    res.json({ status: 'ok', message: 'database is connected' });
+    await pool.query("SELECT 1");
+    res.json({ status: "ok", message: "database is connected" });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    res.status(500).json({ status: "error", message: err.message });
   }
 });
 
-app.get('/health', async (req, res) => {
+app.get("/health", async (req, res) => {
   try {
-    await pool.query('SELECT 1');
-    res.json({ status: 'ok', db: 'connected' });
+    await pool.query("SELECT 1");
+    res.json({ status: "ok", db: "connected" });
   } catch (err) {
-    res.status(500).json({ status: 'error', db: err.message });
+    res.status(500).json({ status: "error", db: err.message });
   }
 });
 
 // ---------------------------------------------------------------------------
 // Data APIs
 // ---------------------------------------------------------------------------
-app.get('/users', async (req, res) => {
+app.get("/users", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, first_name, last_name, email, city, country, joined FROM users ORDER BY id'
+      "SELECT id, first_name, last_name, email, city, country, joined FROM users ORDER BY id",
     );
     res.json(rows);
   } catch (err) {
@@ -44,7 +44,7 @@ app.get('/users', async (req, res) => {
   }
 });
 
-app.get('/orders', async (req, res) => {
+app.get("/orders", async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT o.id, u.first_name, u.last_name, o.item, o.category, o.quantity, o.price, o.ordered_at
@@ -58,7 +58,7 @@ app.get('/orders', async (req, res) => {
   }
 });
 
-app.get('/preferences', async (req, res) => {
+app.get("/preferences", async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT p.id, u.first_name, u.last_name, p.category, p.value
@@ -75,14 +75,16 @@ app.get('/preferences', async (req, res) => {
 // ---------------------------------------------------------------------------
 // Ask — queries DB for context, streams Ollama response to client
 // ---------------------------------------------------------------------------
-app.post('/ask', async (req, res) => {
+app.post("/ask", async (req, res) => {
   const { question } = req.body;
-  if (!question) return res.status(400).json({ error: 'question is required' });
+  if (!question) return res.status(400).json({ error: "question is required" });
 
   try {
     // Build full context from DB
     const [users, orders, prefs] = await Promise.all([
-      pool.query('SELECT first_name, last_name, email, city, country, joined FROM users ORDER BY id'),
+      pool.query(
+        "SELECT first_name, last_name, email, city, country, joined FROM users ORDER BY id",
+      ),
       pool.query(`
         SELECT u.first_name, o.item, o.category, o.quantity, o.price, o.ordered_at
         FROM orders o JOIN users u ON u.id = o.user_id ORDER BY u.id, o.ordered_at
@@ -93,7 +95,7 @@ app.post('/ask', async (req, res) => {
       `),
     ]);
 
-    const fmt = (rows) => rows.map((r) => JSON.stringify(r)).join('\n');
+    const fmt = (rows) => rows.map((r) => JSON.stringify(r)).join("\n");
 
     const context = `
 USERS:
@@ -117,14 +119,14 @@ Question: ${question}
 Answer:`;
 
     // Stream Ollama response directly to the client
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Transfer-Encoding', 'chunked');
-    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("X-Accel-Buffering", "no");
 
     const ollamaRes = await fetch(`${OLLAMA_ADDR}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'llama3.2', prompt, stream: true }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "llama3.2", prompt, stream: true }),
     });
 
     if (!ollamaRes.ok) {
@@ -138,13 +140,21 @@ Answer:`;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const lines = decoder.decode(value, { stream: true }).split('\n').filter(Boolean);
+      const lines = decoder
+        .decode(value, { stream: true })
+        .split("\n")
+        .filter(Boolean);
       for (const line of lines) {
         try {
           const json = JSON.parse(line);
           if (json.response) res.write(json.response);
-          if (json.done) { res.end(); return; }
-        } catch { /* partial chunk, skip */ }
+          if (json.done) {
+            res.end();
+            return;
+          }
+        } catch {
+          /* partial chunk, skip */
+        }
       }
     }
 

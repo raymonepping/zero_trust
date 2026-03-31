@@ -36,7 +36,7 @@ echo "==> Unsealing Vault (threshold: 3 of ${#UNSEAL_KEYS[@]} keys)..."
 # Apply first 3 keys (default Shamir threshold)
 for i in 0 1 2; do
   echo "    Applying key $((i + 1))..."
-  vault operator unseal "${UNSEAL_KEYS[$i]}" > /dev/null
+  vault operator unseal "${UNSEAL_KEYS[$i]}" >/dev/null
 done
 
 # Confirm
