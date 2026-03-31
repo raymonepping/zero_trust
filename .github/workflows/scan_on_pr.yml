@@ -1,0 +1,49 @@
+name: On-Demand Build & Scan
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build_and_scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧾 Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🛠 Set image name dynamically
+        run: |
+          IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
+
+      - name: 🐳 Build Docker image
+        run: |
+          docker build -t "${IMAGE_NAME}:ci" .
+
+      - name: 🔧 Install Trivy, Grype, and Dive
+        run: |
+          mkdir -p $HOME/bin
+
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $HOME/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b $HOME/bin
+
+          # Install Dive safely
+          curl -sSL https://github.com/wagoodman/dive/releases/download/v0.12.0/dive_0.12.0_linux_amd64.tar.gz -o dive.tar.gz
+          mkdir -p dive_tmp && tar -xzf dive.tar.gz -C dive_tmp
+          mv dive_tmp/dive $HOME/bin/dive
+          chmod +x $HOME/bin/dive
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: 🔍 Run Trivy scan (non-blocking)
+        run: |
+          trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 0 "${IMAGE_NAME}:ci"
+
+      - name: 🚨 Run Grype scan (non-blocking)
+        run: |
+          grype "${IMAGE_NAME}:ci" --only-fixed --fail-on high --add-cpes-if-none --output table || true
+
+      - name: 🔬 Run Dive analysis
+        run: |
+          dive "${IMAGE_NAME}:ci" --ci
