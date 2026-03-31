@@ -15,6 +15,7 @@ const SUGGESTIONS = [
 
 export default function App() {
   const [db, setDb] = useState('loading');
+  const [vault, setVault] = useState({ status: 'loading', source: null, path: null, username: null });
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [asking, setAsking] = useState(false);
@@ -32,6 +33,25 @@ export default function App() {
     };
     check();
     const interval = setInterval(check, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch('/api/credentials');
+        const data = await res.json();
+        if (res.ok && data.username) {
+          setVault({ status: 'ok', source: data.source, path: data.path, username: data.username });
+        } else {
+          setVault({ status: 'error', source: null, path: null, username: null });
+        }
+      } catch {
+        setVault({ status: 'error', source: null, path: null, username: null });
+      }
+    };
+    check();
+    const interval = setInterval(check, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -82,6 +102,9 @@ export default function App() {
 
   const { label, color } = STATUS[db];
 
+  const vaultColor = vault.status === 'ok' ? '#f59e0b' : vault.status === 'loading' ? '#475569' : '#ef4444';
+  const vaultLabel = vault.status === 'ok' ? vault.source : vault.status === 'loading' ? 'Checking...' : 'Unreachable';
+
   return (
     <div className="app">
       <div className="layout">
@@ -94,6 +117,18 @@ export default function App() {
             <div className="indicator" style={{ '--color': color }}>
               <span className="dot" />
               <span className="indicator-label">{label}</span>
+            </div>
+          </div>
+          <div className="status-row" style={{ marginTop: '1rem' }}>
+            <span className="status-label">Vault</span>
+            <div className="indicator" style={{ '--color': vaultColor }}>
+              <span className="dot" style={{ animationDuration: '1.2s' }} />
+              <div className="vault-detail">
+                <span className="indicator-label">{vaultLabel}</span>
+                {vault.username && (
+                  <span className="vault-meta">{vault.path} · {vault.username}</span>
+                )}
+              </div>
             </div>
           </div>
         </div>

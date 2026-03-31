@@ -37,7 +37,7 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      test: ["CMD-SHELL", "curl -sf 'http://127.0.0.1:8200/v1/sys/health?sealedcode=200&uninitcode=200' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,7 +53,11 @@ services:
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_TOKEN}
+      VAULT_KV_PATH: secret/data/postgres
       OLLAMA_ADDR: http://ollama:11434
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
     ports:
       - "3000:3000"
     depends_on:

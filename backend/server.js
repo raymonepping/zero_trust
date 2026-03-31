@@ -1,5 +1,6 @@
 const express = require("express");
 const { Pool } = require("pg");
+const { getCredentials } = require("./connector");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -69,6 +70,26 @@ app.get("/preferences", async (req, res) => {
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Credentials — fetches DB credentials via connector.js (swappable)
+// ---------------------------------------------------------------------------
+app.get("/credentials", async (req, res) => {
+  try {
+    const creds = await getCredentials();
+    res.json({
+      source:   creds.source,
+      path:     creds.path,
+      host:     creds.host,
+      port:     creds.port,
+      database: creds.database,
+      username: creds.user,
+      password: '***',
+    });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 
