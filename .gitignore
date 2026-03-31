@@ -11,6 +11,7 @@ Thumbs.db
 *.pid
 git_commit.sh
 FOLDER_TREE.md
+data/*
 
 ########################################
 # 💻 IDE & Editor Configs
