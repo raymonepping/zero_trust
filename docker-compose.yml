@@ -1,0 +1,107 @@
+services:
+  db:
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    container_name: zero_trust_db
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vault:
+    image: hashicorp/vault-enterprise:1.21.3-ent
+    container_name: zero_trust_vault
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+    volumes:
+      - ./vault/config.hcl:/vault/config/config.hcl:Z
+      - ./vault/config/vault.hclic:/vault/config/vault.hclic:Z
+    environment:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      VAULT_LICENSE_PATH: "/vault/config/vault.hclic"
+    command: vault server -config=/vault/config/config.hcl
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: zero_trust_backend
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_TOKEN}
+      OLLAMA_ADDR: http://ollama:11434
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: zero_trust_frontend
+    environment:
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - app_network
+
+  ollama:
+    build:
+      context: ./ollama
+      dockerfile: Dockerfile
+    container_name: zero_trust_ollama
+    environment:
+      OLLAMA_MODELS: "llama3.2 nomic-embed-text"
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  db_data:
+  ollama_data:

@@ -1,0 +1,120 @@
+{
+  "orders": [
+    {
+      "user_id": 1,
+      "item": "Mechanical Keyboard – Keychron Q5 Pro",
+      "category": "Tech",
+      "quantity": 1,
+      "price": 189.99,
+      "ordered_at": "2024-01-08"
+    },
+    {
+      "user_id": 1,
+      "item": "Sony WH-1000XM5 Headphones",
+      "category": "Tech",
+      "quantity": 1,
+      "price": 349.00,
+      "ordered_at": "2024-02-14"
+    },
+    {
+      "user_id": 1,
+      "item": "HashiCorp Vault Deep Dive – Udemy Course",
+      "category": "Education",
+      "quantity": 1,
+      "price": 19.99,
+      "ordered_at": "2024-03-01"
+    },
+    {
+      "user_id": 1,
+      "item": "Standing Desk Mat – Anti-Fatigue",
+      "category": "Office",
+      "quantity": 2,
+      "price": 49.95,
+      "ordered_at": "2024-03-22"
+    },
+    {
+      "user_id": 1,
+      "item": "Specialty Coffee Subscription – 3 months",
+      "category": "Food & Drink",
+      "quantity": 1,
+      "price": 74.00,
+      "ordered_at": "2024-04-05"
+    },
+    {
+      "user_id": 2,
+      "item": "Bose SoundLink Revolve+ Speaker",
+      "category": "Audio",
+      "quantity": 1,
+      "price": 299.00,
+      "ordered_at": "2024-01-20"
+    },
+    {
+      "user_id": 2,
+      "item": "Nike Air Zoom Pegasus 41 – Running Shoes",
+      "category": "Sports",
+      "quantity": 1,
+      "price": 129.99,
+      "ordered_at": "2024-02-03"
+    },
+    {
+      "user_id": 2,
+      "item": "Pasta Maker Machine – Marcato Atlas 150",
+      "category": "Kitchen",
+      "quantity": 1,
+      "price": 89.95,
+      "ordered_at": "2024-03-11"
+    }
+  ],
+  "preferences": [
+    {
+      "user_id": 1,
+      "category": "Music",
+      "value": "Electronic, Techno, Deep House"
+    },
+    {
+      "user_id": 1,
+      "category": "Sports",
+      "value": "Cycling, Swimming"
+    },
+    {
+      "user_id": 1,
+      "category": "Cuisine",
+      "value": "Japanese, Italian"
+    },
+    {
+      "user_id": 1,
+      "category": "Tech Interests",
+      "value": "DevOps, Security, Cloud Infrastructure, HashiCorp tooling"
+    },
+    {
+      "user_id": 1,
+      "category": "Travel",
+      "value": "Japan, Iceland, Portugal"
+    },
+    {
+      "user_id": 2,
+      "category": "Music",
+      "value": "Jazz, Classical, Indie Rock"
+    },
+    {
+      "user_id": 2,
+      "category": "Sports",
+      "value": "Running, Hiking, Football"
+    },
+    {
+      "user_id": 2,
+      "category": "Cuisine",
+      "value": "Italian, Mediterranean, Street Food"
+    },
+    {
+      "user_id": 2,
+      "category": "Tech Interests",
+      "value": "Frontend Development, UI/UX, Open Source"
+    },
+    {
+      "user_id": 2,
+      "category": "Travel",
+      "value": "Italy, Morocco, New Zealand"
+    }
+  ]
+}

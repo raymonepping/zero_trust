@@ -117,6 +117,13 @@ docker-compose.override.yml
 .env.*
 
 ########################################
+# 🔐 Vault Secrets
+########################################
+vault/init.txt
+vault/config/vault.hclic
+vault/data/
+
+########################################
 # 🛠️ Terraform
 ########################################
 .terraform/

@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "first_name": "Raymon",
+    "last_name": "Epping",
+    "email": "raymon.epping@ibm.com",
+    "phone": "+31 6 11223344",
+    "city": "Amsterdam",
+    "country": "Netherlands",
+    "joined": "2023-03-15"
+  },
+  {
+    "id": 2,
+    "first_name": "Cojan",
+    "last_name": "Van Ballegooijen",
+    "email": "cojan.vanBallegooijen@ibm.com",
+    "phone": "+31 6 55667788",
+    "city": "Rotterdam",
+    "country": "Netherlands",
+    "joined": "2023-06-20"
+  }
+]
