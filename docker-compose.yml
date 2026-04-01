@@ -78,6 +78,13 @@ services:
       VAULT_KV_PATH: secret/data/postgres
       VAULT_ROLE_ID: ${VAULT_ROLE_ID:-}
       VAULT_SECRET_ID: ${VAULT_SECRET_ID:-}
+      KEYCLOAK_ADDR: ${KEYCLOAK_ADDR:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-zero-trust}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-backend}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+      KEYCLOAK_USERNAME: ${KEYCLOAK_USERNAME:-}
+      KEYCLOAK_PASSWORD: ${KEYCLOAK_PASSWORD:-}
+      VAULT_JWT_ROLE: ${VAULT_JWT_ROLE:-zero-trust-jwt-lab}
     volumes:
       - ./backend:/app
     ports:

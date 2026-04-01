@@ -1,53 +1,61 @@
 /**
- * connector.js — AppRole + Dynamic credential provider with rotation support
+ * connector.js — Keycloak JWT → Vault token → Dynamic DB credentials + rotation
  *
- * Authenticates to Vault using AppRole (role_id + secret_id), caches the
- * scoped Vault token, fetches dynamic PostgreSQL credentials, and manages
- * proactive renewal before lease expiry.
+ * Authentication chain:
+ *   1. Fetch a short-lived JWT from Keycloak (password grant or client_credentials)
+ *   2. Exchange it for a scoped Vault token via auth/jwt/login
+ *   3. Use the Vault token to fetch dynamic PostgreSQL credentials
+ *   4. Proactively renew credentials at 75% of TTL
  *
- * Two layers of short-lived secrets:
- *   1. AppRole → short-lived Vault token (cached, renewed at 75% TTL)
- *   2. Vault token → dynamic DB credentials (renewed at 75% TTL)
- *
- * Rotation lifecycle:
- *   1. startAutoRenewal() kicks off the proactive timer
- *   2. At 75% of DB credential TTL, new credentials are fetched
- *   3. All registered onRotation() callbacks fire with fresh credentials
- *   4. If proactive renewal fails, it retries with backoff
- *   5. forceRotation() is available for reactive fallback from pool-manager
+ * Three layers of short-lived secrets:
+ *   1. Keycloak → short-lived JWT (refreshed when near expiry)
+ *   2. JWT → scoped Vault token (cached, renewed at 75% TTL)
+ *   3. Vault token → dynamic DB credentials (renewed at 75% TTL)
  *
  * Required environment variables:
- *   VAULT_ADDR      — Vault server address (default: http://vault:8200)
- *   VAULT_ROLE_ID   — AppRole role_id
- *   VAULT_SECRET_ID — AppRole secret_id
- *   VAULT_DB_ROLE   — database role name (default: app-role)
- *   VAULT_DB_HOST   — PostgreSQL host as seen by the app (default: db)
- *   VAULT_DB_PORT   — PostgreSQL port (default: 5432)
- *   VAULT_DB_NAME   — PostgreSQL database name (default: appdb)
+ *   KEYCLOAK_ADDR          — Keycloak address (default: http://keycloak:8080)
+ *   KEYCLOAK_REALM         — Keycloak realm (default: zero-trust)
+ *   KEYCLOAK_CLIENT_ID     — Client ID (default: backend)
+ *   KEYCLOAK_CLIENT_SECRET — Client secret
+ *   KEYCLOAK_USERNAME      — Username for password grant
+ *   KEYCLOAK_PASSWORD      — Password for password grant
+ *   VAULT_ADDR             — Vault server address (default: http://vault:8200)
+ *   VAULT_JWT_ROLE         — Vault JWT role name (default: zero-trust-jwt-lab)
+ *   VAULT_DB_ROLE          — Database role name (default: app-role)
+ *   VAULT_DB_HOST          — PostgreSQL host (default: db)
+ *   VAULT_DB_PORT          — PostgreSQL port (default: 5432)
+ *   VAULT_DB_NAME          — PostgreSQL database name (default: appdb)
  */
 
 "use strict";
 
-const VAULT_ADDR      = process.env.VAULT_ADDR      || "http://vault:8200";
-const VAULT_ROLE_ID   = process.env.VAULT_ROLE_ID;
-const VAULT_SECRET_ID = process.env.VAULT_SECRET_ID;
-const VAULT_DB_ROLE   = process.env.VAULT_DB_ROLE   || "app-role";
-const DB_HOST         = process.env.VAULT_DB_HOST   || "db";
-const DB_PORT         = parseInt(process.env.VAULT_DB_PORT || "5432", 10);
-const DB_NAME         = process.env.VAULT_DB_NAME   || "appdb";
+const KEYCLOAK_ADDR          = process.env.KEYCLOAK_ADDR          || "http://keycloak:8080";
+const KEYCLOAK_REALM         = process.env.KEYCLOAK_REALM         || "zero-trust";
+const KEYCLOAK_CLIENT_ID     = process.env.KEYCLOAK_CLIENT_ID     || "backend";
+const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET;
+const KEYCLOAK_USERNAME      = process.env.KEYCLOAK_USERNAME;
+const KEYCLOAK_PASSWORD      = process.env.KEYCLOAK_PASSWORD;
+
+const VAULT_ADDR    = process.env.VAULT_ADDR     || "http://vault:8200";
+const VAULT_JWT_ROLE = process.env.VAULT_JWT_ROLE || "zero-trust-jwt-lab";
+const VAULT_DB_ROLE = process.env.VAULT_DB_ROLE  || "app-role";
+const DB_HOST       = process.env.VAULT_DB_HOST  || "db";
+const DB_PORT       = parseInt(process.env.VAULT_DB_PORT || "5432", 10);
+const DB_NAME       = process.env.VAULT_DB_NAME  || "appdb";
+
+if (!KEYCLOAK_CLIENT_SECRET) throw new Error("KEYCLOAK_CLIENT_SECRET is not set");
+if (!KEYCLOAK_USERNAME)      throw new Error("KEYCLOAK_USERNAME is not set");
+if (!KEYCLOAK_PASSWORD)      throw new Error("KEYCLOAK_PASSWORD is not set");
 
 const RENEWAL_THRESHOLD = 0.75;
-const RETRY_DELAYS = [5, 10, 30, 60];
-
-if (!VAULT_ROLE_ID)   throw new Error("VAULT_ROLE_ID is not set");
-if (!VAULT_SECRET_ID) throw new Error("VAULT_SECRET_ID is not set");
+const RETRY_DELAYS      = [5, 10, 30, 60];
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-let cachedToken       = null;
-let tokenExpiresAt    = 0;
+let cachedVaultToken  = null;
+let vaultTokenExpires = 0;
 
 let currentCredentials  = null;
 let currentLeaseId      = null;
@@ -75,38 +83,74 @@ function emitRotation(credentials) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — AppRole login → scoped short-lived Vault token (cached)
+// Step 1 — Fetch JWT from Keycloak
+// ---------------------------------------------------------------------------
+
+async function fetchKeycloakJwt() {
+  const url = `${KEYCLOAK_ADDR}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
+
+  const body = new URLSearchParams({
+    grant_type:    "password",
+    client_id:     KEYCLOAK_CLIENT_ID,
+    client_secret: KEYCLOAK_CLIENT_SECRET,
+    username:      KEYCLOAK_USERNAME,
+    password:      KEYCLOAK_PASSWORD,
+    scope:         "openid",
+  });
+
+  const res = await fetch(url, {
+    method:  "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body:    body.toString(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Keycloak token request failed ${res.status}: ${text}`);
+  }
+
+  const json = await res.json();
+  if (!json.access_token) throw new Error("Keycloak did not return an access_token");
+
+  console.log(`[connector] Keycloak JWT obtained | expires_in: ${json.expires_in}s`);
+  return json.access_token;
+}
+
+// ---------------------------------------------------------------------------
+// Step 2 — Exchange JWT for a scoped Vault token (cached)
 // ---------------------------------------------------------------------------
 
 async function getVaultToken() {
   const now = Date.now();
-  if (cachedToken && tokenExpiresAt > now + 30000) return cachedToken;
+  if (cachedVaultToken && vaultTokenExpires > now + 30000) return cachedVaultToken;
 
-  const res = await fetch(`${VAULT_ADDR}/v1/auth/approle/login`, {
+  const jwt = await fetchKeycloakJwt();
+
+  const res = await fetch(`${VAULT_ADDR}/v1/auth/jwt/login`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ role_id: VAULT_ROLE_ID, secret_id: VAULT_SECRET_ID }),
+    body:    JSON.stringify({ role: VAULT_JWT_ROLE, jwt }),
   });
 
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`AppRole login failed ${res.status}: ${body}`);
+    const text = await res.text();
+    throw new Error(`Vault JWT login failed ${res.status}: ${text}`);
   }
 
   const json  = await res.json();
   const token = json.auth?.client_token;
   const ttl   = json.auth?.lease_duration;
-  if (!token) throw new Error("AppRole login did not return a token");
+  if (!token) throw new Error("Vault JWT login did not return a token");
 
-  cachedToken    = token;
-  tokenExpiresAt = now + (ttl * 1000);
+  cachedVaultToken  = token;
+  vaultTokenExpires = now + (ttl * 1000);
 
-  console.log(`[connector] AppRole login OK | token TTL: ${ttl}s`);
+  console.log(`[connector] Vault JWT login OK | token TTL: ${ttl}s`);
   return token;
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — Fetch dynamic DB credentials
+// Step 3 — Fetch dynamic DB credentials
 // ---------------------------------------------------------------------------
 
 async function fetchCredentials() {
@@ -118,8 +162,8 @@ async function fetchCredentials() {
   });
 
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Dynamic creds request failed ${res.status}: ${body}`);
+    const text = await res.text();
+    throw new Error(`Dynamic creds request failed ${res.status}: ${text}`);
   }
 
   const json                   = await res.json();
@@ -137,7 +181,7 @@ async function fetchCredentials() {
     database: DB_NAME,
     user:     username,
     password: password,
-    source:   "vault-approle-dynamic",
+    source:   "vault-jwt-dynamic",
     path,
     ttl:      leaseDuration,
     leaseId,
@@ -168,8 +212,8 @@ async function getCredentials() {
 
 async function forceRotation(reason) {
   console.log(`[connector] Forced rotation triggered | reason: ${reason}`);
-  cachedToken    = null;
-  tokenExpiresAt = 0;
+  cachedVaultToken  = null;
+  vaultTokenExpires = 0;
 
   const creds = await fetchCredentials();
   emitRotation(creds);

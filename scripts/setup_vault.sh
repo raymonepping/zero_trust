@@ -98,11 +98,8 @@ fi
 # 6. Vault Policy for AppRole
 # ==========================================
 
-if vault policy read app-policy > /dev/null 2>&1; then
-  echo "✅ Policy 'app-policy' already exists."
-else
-  echo "⏳ Writing policy 'app-policy'..."
-  vault policy write app-policy - <<'EOF'
+echo "⏳ Writing policy 'app-policy'..."
+vault policy write app-policy - <<'EOF'
 # Allow reading dynamic database credentials
 path "database/creds/app-role" {
   capabilities = ["read"]
@@ -121,8 +118,7 @@ path "auth/token/renew-self" {
   capabilities = ["update"]
 }
 EOF
-  echo "✅ Policy created."
-fi
+echo "✅ Policy 'app-policy' written."
 
 # ==========================================
 # 7. AppRole Role
@@ -185,11 +181,8 @@ echo "✅ LDAP connection configured."
 # 10. LDAP Policy
 # ==========================================
 
-if vault policy read ldap-user > /dev/null 2>&1; then
-  echo "✅ Policy 'ldap-user' already exists."
-else
-  echo "⏳ Writing policy 'ldap-user'..."
-  vault policy write ldap-user - <<'EOF'
+echo "⏳ Writing policy 'ldap-user'..."
+vault policy write ldap-user - <<'EOF'
 path "secret/data/postgres" {
   capabilities = ["read"]
 }
@@ -198,8 +191,7 @@ path "secret/metadata/postgres" {
   capabilities = ["read", "list"]
 }
 EOF
-  echo "✅ Policy 'ldap-user' created."
-fi
+echo "✅ Policy 'ldap-user' written."
 
 # ==========================================
 # 11. LDAP User → Policy mapping
@@ -215,7 +207,7 @@ echo "✅ User 'repping' mapped."
 
 KEYCLOAK_ADDR="${KEYCLOAK_ADDR:-http://keycloak:8080}"
 KEYCLOAK_REALM="${KEYCLOAK_REALM:-zero-trust}"
-KEYCLOAK_ISSUER="${KEYCLOAK_ISSUER:-http://localhost:8082/realms/${KEYCLOAK_REALM}}"
+KEYCLOAK_ISSUER="${KEYCLOAK_ISSUER:-${KEYCLOAK_ADDR}/realms/${KEYCLOAK_REALM}}"
 
 if vault auth list | grep -q "^jwt/"; then
   echo "✅ JWT auth method already enabled."
@@ -234,11 +226,8 @@ echo "✅ JWT auth configured."
 # 13. JWT Policy
 # ==========================================
 
-if vault policy read zero-trust-jwt-lab > /dev/null 2>&1; then
-  echo "✅ Policy 'zero-trust-jwt-lab' already exists."
-else
-  echo "⏳ Writing policy 'zero-trust-jwt-lab'..."
-  vault policy write zero-trust-jwt-lab - <<'EOF'
+echo "⏳ Writing policy 'zero-trust-jwt-lab'..."
+vault policy write zero-trust-jwt-lab - <<'EOF'
 # Allow reading dynamic database credentials
 path "database/creds/app-role" {
   capabilities = ["read"]
@@ -252,8 +241,7 @@ path "auth/token/renew-self" {
   capabilities = ["update"]
 }
 EOF
-  echo "✅ Policy 'zero-trust-jwt-lab' created."
-fi
+echo "✅ Policy 'zero-trust-jwt-lab' written."
 
 # ==========================================
 # 14. JWT Role
