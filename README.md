@@ -18,7 +18,7 @@ A hands-on workshop demonstrating progressive credential security patterns using
                    │                │                │
             ┌──────▼──────┐  ┌──────▼──────┐  ┌─────▼──────┐
             │    Vault    │  │   Ollama    │  │  Keycloak  │
-            │  Enterprise │  │  llama3.2  │  │   (OIDC)   │
+            │  Enterprise │  │  llama3.2   │  │   (OIDC)   │
             └──────┬──────┘  └─────────────┘  └─────┬──────┘
                    │                                 │
             ┌──────▼──────┐                   ┌──────▼──────┐
