@@ -47,6 +47,7 @@ let renewalTimer = null;
 let running = false;
 
 let rotationInProgress = null;
+let lastRenewalError = null;   // set on proactive renewal failure, cleared on success
 
 const rotationListeners = [];
 
@@ -305,8 +306,10 @@ async function performRenewal(retryIndex) {
 
     await refreshCredentials("proactive");
 
+    lastRenewalError = null;
     console.log("[connector] Proactive renewal complete");
   } catch (err) {
+    lastRenewalError = err.message;
     console.error(`[connector] Proactive renewal failed: ${err.message}`);
 
     const delay =
@@ -354,6 +357,34 @@ async function revokeLease(leaseId) {
   console.log(`[connector] Lease revoked | ${leaseId}`);
 }
 
+async function lookupLease(leaseId) {
+  if (!leaseId) return { exists: false, status: "missing", ttl: null };
+
+  const token = await getVaultToken();
+
+  const res = await fetch(`${VAULT_ADDR}/v1/sys/leases/lookup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Vault-Token": token,
+    },
+    body: JSON.stringify({ lease_id: leaseId }),
+  });
+
+  if (res.status === 400 || res.status === 404) {
+    return { exists: false, status: "revoked", ttl: null };
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Lease lookup failed ${res.status}: ${text}`);
+  }
+
+  const json = await res.json();
+
+  return { exists: true, status: "active", ttl: json.data?.ttl ?? null };
+}
+
 async function startAutoRenewal() {
   running = true;
 
@@ -392,13 +423,13 @@ function getLeaseInfo() {
   const remainingMs = Math.max(0, credentialExpiresAt - Date.now());
 
   return {
-    status: remainingMs > 0 ? "active" : "expired",
     leaseId: currentLeaseId,
     user: currentCredentials.user,
     path: currentCredentials.path,
     ttl: currentCredentials.ttl,
     remainingMs,
     remainingSec: Math.round(remainingMs / 1000),
+    renewalError: lastRenewalError,
     issuedAt: new Date(currentCredentials.issuedAt).toISOString(),
     expiresAt: new Date(credentialExpiresAt).toISOString(),
   };
@@ -412,4 +443,5 @@ module.exports = {
   onRotation,
   getLeaseInfo,
   revokeLease,
+  lookupLease,
 };

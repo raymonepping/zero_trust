@@ -47,6 +47,7 @@ let renewalTimer = null;
 let running = false;
 
 let rotationInProgress = null;
+let lastRenewalError = null;   // set on proactive renewal failure, cleared on success
 
 const rotationListeners = [];
 
@@ -305,8 +306,10 @@ async function performRenewal(retryIndex) {
 
     await refreshCredentials("proactive");
 
+    lastRenewalError = null;
     console.log("[connector] Proactive renewal complete");
   } catch (err) {
+    lastRenewalError = err.message;
     console.error(`[connector] Proactive renewal failed: ${err.message}`);
 
     const delay =
@@ -392,13 +395,13 @@ function getLeaseInfo() {
   const remainingMs = Math.max(0, credentialExpiresAt - Date.now());
 
   return {
-    status: remainingMs > 0 ? "active" : "expired",
     leaseId: currentLeaseId,
     user: currentCredentials.user,
     path: currentCredentials.path,
     ttl: currentCredentials.ttl,
     remainingMs,
     remainingSec: Math.round(remainingMs / 1000),
+    renewalError: lastRenewalError,
     issuedAt: new Date(currentCredentials.issuedAt).toISOString(),
     expiresAt: new Date(credentialExpiresAt).toISOString(),
   };

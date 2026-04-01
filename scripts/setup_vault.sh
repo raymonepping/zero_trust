@@ -240,6 +240,16 @@ path "auth/token/lookup-self" {
 path "auth/token/renew-self" {
   capabilities = ["update"]
 }
+
+# Allow revoking old leases during credential rotation
+path "sys/leases/revoke" {
+  capabilities = ["update"]
+}
+
+# Allow looking up lease status (used by /health/lease for live Vault truth)
+path "sys/leases/lookup" {
+  capabilities = ["update"]
+}
 EOF
 echo "✅ Policy 'zero-trust-jwt-lab' written."
 

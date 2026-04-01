@@ -150,16 +150,30 @@ async function handleProactiveRotation(credentials) {
 // Reactive credential recovery
 // ---------------------------------------------------------------------------
 
-async function recoverFromAuthFailure() {
-  let freshCreds;
+let recoveryInProgress = null;
 
-  if (typeof connector.forceRotation === "function") {
-    freshCreds = await connector.forceRotation("auth-error");
-  } else {
-    freshCreds = await connector.getCredentials();
+async function recoverFromAuthFailure() {
+  if (recoveryInProgress) {
+    return recoveryInProgress;
   }
 
-  await rotatePool(freshCreds, "reactive");
+  recoveryInProgress = (async () => {
+    let freshCreds;
+
+    if (typeof connector.forceRotation === "function") {
+      freshCreds = await connector.forceRotation("auth-error");
+    } else {
+      freshCreds = await connector.getCredentials();
+    }
+
+    await rotatePool(freshCreds, "reactive");
+  })();
+
+  try {
+    return await recoveryInProgress;
+  } finally {
+    recoveryInProgress = null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -282,4 +296,5 @@ module.exports = {
   shutdown,
   query,
   getStatus,
+  rotatePool,
 };

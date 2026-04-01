@@ -79,7 +79,7 @@ async function probeVault() {
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
-app.get("/", async (req, res) => {
+app.get("/", async (_req, res) => {
   try {
     await poolManager.query("SELECT 1");
     res.json({ status: "ok", message: "database is connected" });
@@ -88,7 +88,7 @@ app.get("/", async (req, res) => {
   }
 });
 
-app.get("/health", async (req, res) => {
+app.get("/health", async (_req, res) => {
   const [dbResult, vaultResult] = await Promise.allSettled([
     poolManager.query("SELECT 1"),
     probeVault(),
@@ -120,7 +120,7 @@ app.get("/health", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Data APIs — filtered by trust level
 // ---------------------------------------------------------------------------
-app.get("/users", async (req, res) => {
+app.get("/users", async (_req, res) => {
   try {
     const { rows } = await poolManager.query(
       "SELECT id, first_name, last_name, email, city, country, joined FROM users ORDER BY id",
@@ -131,7 +131,7 @@ app.get("/users", async (req, res) => {
   }
 });
 
-app.get("/orders", async (req, res) => {
+app.get("/orders", async (_req, res) => {
   try {
     const source  = await getActiveSource();
     const allowed = getAllowedClassifications(source);
@@ -149,7 +149,7 @@ app.get("/orders", async (req, res) => {
   }
 });
 
-app.get("/preferences", async (req, res) => {
+app.get("/preferences", async (_req, res) => {
   try {
     const source  = await getActiveSource();
     const allowed = getAllowedClassifications(source);
@@ -169,7 +169,7 @@ app.get("/preferences", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Credentials — includes trust level and classification access
 // ---------------------------------------------------------------------------
-app.get("/credentials", async (req, res) => {
+app.get("/credentials", async (_req, res) => {
   try {
     const connector = require("./connector");
     const creds     = await connector.getCredentials();
@@ -201,20 +201,95 @@ app.get("/credentials", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Lease health — current lease status and rotation state
 // ---------------------------------------------------------------------------
-app.get("/health/lease", (_req, res) => {
+app.get("/health/lease", async (_req, res) => {
   try {
     const connector = require("./connector");
-    const status    = poolManager.getStatus();
-    const lease     = typeof connector.getLeaseInfo === "function"
+    const poolStatus = poolManager.getStatus();
+    const lease      = typeof connector.getLeaseInfo === "function"
       ? connector.getLeaseInfo()
-      : { status: "not-supported", leaseId: null, ttl: null };
+      : null;
+
+    if (!lease) {
+      return res.json({ status: "no-credentials", lease_id: null, ttl: null, remaining_sec: null, rotation_in_progress: false });
+    }
+
+    // Live Vault truth — non-blocking: if lookup fails, degrade gracefully
+    let vaultStatus = "unknown";
+    try {
+      const lookup = await connector.lookupLease(lease.leaseId);
+      vaultStatus = lookup.status;
+
+      // Auto-recover if Vault reports the lease is already gone
+      if (lookup.status === "revoked" && !poolStatus.rotationActive) {
+        console.warn("[server] /health/lease: Vault reports lease revoked — triggering recovery");
+        connector.forceRotation("vault-revoked").catch((err) =>
+          console.error("[server] Auto-recovery after revoke failed:", err.message)
+        );
+      }
+    } catch (lookupErr) {
+      vaultStatus = "lookup-failed";
+      console.error("[server] Lease lookup error:", lookupErr.message);
+    }
+
+    // Local computed status — Priority: rotating > expired > degraded > renewing > active
+    const renewalWindowSec = (lease.ttl || 0) * (1 - 0.75);
+    let localStatus;
+    if (poolStatus.rotationActive) {
+      localStatus = "rotating";
+    } else if (lease.remainingSec <= 0) {
+      localStatus = "expired";
+    } else if (lease.renewalError) {
+      localStatus = "degraded";
+    } else if (lease.remainingSec < renewalWindowSec) {
+      localStatus = "renewing";
+    } else {
+      localStatus = "active";
+    }
 
     res.json({
-      lease_id:             lease.leaseId   || null,
-      ttl:                  lease.ttl        || null,
-      remaining_sec:        lease.remainingSec ?? null,
-      status:               lease.status     || "unknown",
-      rotation_in_progress: status.rotationActive,
+      lease_id:             lease.leaseId      || null,
+      ttl:                  lease.ttl           || null,
+      remaining_sec:        lease.remainingSec  ?? null,
+      issued_at:            lease.issuedAt      || null,
+      expires_at:           lease.expiresAt     || null,
+      local_status:         localStatus,
+      vault_status:         vaultStatus,
+      rotation_in_progress: poolStatus.rotationActive,
+      rotation_count:       poolStatus.rotationCount,
+      ...(lease.renewalError && { renewal_error: lease.renewalError }),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/health/lease/rotate", async (_req, res) => {
+  try {
+    const connector = require("./connector");
+
+    if (typeof connector.forceRotation !== "function") {
+      return res.status(501).json({ error: "Active connector does not support forced rotation" });
+    }
+
+    const creds = await connector.forceRotation("api-request");
+
+    // Await pool rotation explicitly so the response reflects the completed state.
+    // rotatePool deduplicates — if emitRotation already triggered it, this joins
+    // that promise instead of starting a second rotation.
+    await poolManager.rotatePool(creds, "api-request");
+
+    const poolStatus = poolManager.getStatus();
+    const lease      = connector.getLeaseInfo();
+
+    console.log("[server] Forced rotation via API | user:", creds.user);
+
+    res.json({
+      rotated:        true,
+      lease_id:       lease.leaseId      || null,
+      ttl:            lease.ttl           || null,
+      remaining_sec:  lease.remainingSec  ?? null,
+      issued_at:      lease.issuedAt      || null,
+      rotation_count: poolStatus.rotationCount,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
