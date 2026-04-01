@@ -109,13 +109,18 @@ export default function App() {
   const { label, tone, icon } = STATUS[db];
 
   const vaultTone = vault.status === 'ok' ? 'vault' : vault.status === 'loading' ? 'loading' : 'error';
-  const vaultLabel = vault.status === 'ok'
-    ? (vault.source === 'vault-dynamic' ? 'Dynamic' : 'Static KV')
-    : vault.status === 'loading' ? 'Checking' : 'Unreachable';
-  const vaultBadge = vault.status === 'ok'
-    ? (vault.source === 'vault-dynamic'
-        ? { label: 'DYNAMIC', cls: 'vault-badge-dynamic' }
-        : { label: 'KV v2', cls: 'vault-badge-kv' })
+
+  const VAULT_SOURCE_META = {
+    'vault-kv':              { label: 'Static KV',       badge: 'KV v2',           cls: 'vault-badge-kv' },
+    'vault-dynamic':         { label: 'Dynamic',         badge: 'DYNAMIC',         cls: 'vault-badge-dynamic' },
+    'vault-approle':         { label: 'AppRole / KV',    badge: 'APPROLE',         cls: 'vault-badge-approle' },
+    'vault-approle-dynamic': { label: 'AppRole / Dynamic', badge: 'APPROLE+DYN',  cls: 'vault-badge-approle-dynamic' },
+  };
+
+  const sourceMeta = VAULT_SOURCE_META[vault.source] || { label: vault.source, badge: null, cls: '' };
+  const vaultLabel = vault.status === 'ok' ? sourceMeta.label : vault.status === 'loading' ? 'Checking' : 'Unreachable';
+  const vaultBadge = vault.status === 'ok' && sourceMeta.badge
+    ? { label: sourceMeta.badge, cls: sourceMeta.cls }
     : null;
   const hasAnswer = Boolean(answer);
 

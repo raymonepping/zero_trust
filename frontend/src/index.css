@@ -278,6 +278,18 @@ h1 {
   background: rgba(255, 140, 50, 0.1);
 }
 
+.vault-badge-approle {
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, 0.4);
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.vault-badge-approle-dynamic {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.1);
+}
+
 .vault-meta {
   color: var(--text-dim);
   font-size: 0.72rem;

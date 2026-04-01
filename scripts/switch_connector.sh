@@ -37,10 +37,11 @@ declare -A CONNECTOR_DESC=(
   [env]="Credentials from environment variables — Phase 0 / no Vault"
   [vault]="Static credentials from Vault KV v2 — Phase 1"
   [dynamic]="Short-lived credentials from Vault database engine — Phase 2"
-  [approle]="AppRole login → short-lived token → dynamic DB credentials — Phase 3"
+  [approle]="AppRole login → scoped token → static KV credentials — Phase 3a"
+  [approle-dynamic]="AppRole login → scoped token → dynamic DB credentials — Phase 3b (full zero trust)"
 )
 
-VALID_TYPES=(wired env vault dynamic approle)
+VALID_TYPES=(wired env vault dynamic approle approle-dynamic)
 
 is_valid_type() {
   local t="$1"
@@ -132,7 +133,9 @@ show_current() {
 
   # Detect type by matching the unique source: value each connector exports
   local detected="unknown"
-  if grep -q '"vault-approle"\|'"'"'vault-approle'"'" "${TARGET_FILE}" 2>/dev/null; then
+  if grep -q '"vault-approle-dynamic"\|'"'"'vault-approle-dynamic'"'" "${TARGET_FILE}" 2>/dev/null; then
+    detected="approle-dynamic"
+  elif grep -q '"vault-approle"\|'"'"'vault-approle'"'" "${TARGET_FILE}" 2>/dev/null; then
     detected="approle"
   elif grep -q '"vault-dynamic"\|'"'"'vault-dynamic'"'" "${TARGET_FILE}" 2>/dev/null; then
     detected="dynamic"
