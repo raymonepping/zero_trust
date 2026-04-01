@@ -151,6 +151,8 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
     ports:
       - "8082:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
     networks:
       - net-data
 
@@ -172,4 +174,5 @@ volumes:
   ollama_data:
   openldap-data:
   openldap-config:
+  keycloak_data:
 
