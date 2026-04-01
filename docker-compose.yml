@@ -108,6 +108,37 @@ services:
       - net-frontend
       - net-backend
 
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: openldap
+    restart: unless-stopped
+    environment:
+      LDAP_ORGANISATION: "MyOrg"
+      LDAP_DOMAIN: "my.org"
+      LDAP_ADMIN_PASSWORD: "admin"
+    ports:
+      - "1389:389"
+      - "1636:636"
+    volumes:
+      - openldap-data:/var/lib/ldap
+      - openldap-config:/etc/ldap/slapd.d
+    networks:
+      - net-data
+
+  ldap-admin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: ldap-admin
+    restart: unless-stopped
+    networks:
+      - net-data
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: openldap
+      PHPLDAPADMIN_HTTPS: "false"
+    ports:
+      - "8081:80"
+    depends_on:
+      - openldap
+
 networks:
   net-frontend:
     driver: bridge
@@ -124,3 +155,6 @@ networks:
 volumes:
   db_data:
   ollama_data:
+  openldap-data:
+  openldap-config:
+

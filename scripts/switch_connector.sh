@@ -5,7 +5,7 @@ set -euo pipefail
 VERSION="2.1.0"
 
 TARGET_FILE="./backend/connector.js"
-BASE_URL="https://raw.githubusercontent.com/raymonepping/zero_trust/main/data"
+BASE_URL="https://raw.githubusercontent.com/raymonepping/zero_trust/refs/heads/main/data"
 CONTAINER_NAME="zero_trust_backend"
 
 # ---------------------------------------------------------------------------

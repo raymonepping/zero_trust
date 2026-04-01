@@ -158,7 +158,59 @@ echo "⚠️  Secret ID is single-use-friendly — regenerate with:"
 echo "  vault write -force auth/approle/role/zero-trust-app/secret-id"
 
 # ==========================================
-# 9. Validation & Testing
+# 9. LDAP Auth Method
+# ==========================================
+
+if vault auth list | grep -q "^ldap/"; then
+  echo "✅ LDAP auth method already enabled."
+else
+  echo "⏳ Enabling LDAP auth method..."
+  vault auth enable ldap
+fi
+
+echo "⏳ Configuring LDAP connection..."
+vault write auth/ldap/config \
+  url="ldap://openldap:389" \
+  userdn="ou=people,dc=my,dc=org" \
+  groupdn="ou=groups,dc=my,dc=org" \
+  binddn="cn=admin,dc=my,dc=org" \
+  bindpass="admin" \
+  userattr="uid" \
+  groupfilter="(|(memberUid={{.Username}})(member={{.UserDN}})(uniqueMember={{.UserDN}}))" \
+  groupattr="cn" \
+  insecure_tls=true > /dev/null
+echo "✅ LDAP connection configured."
+
+# ==========================================
+# 10. LDAP Policy
+# ==========================================
+
+if vault policy read ldap-user > /dev/null 2>&1; then
+  echo "✅ Policy 'ldap-user' already exists."
+else
+  echo "⏳ Writing policy 'ldap-user'..."
+  vault policy write ldap-user - <<'EOF'
+path "secret/data/postgres" {
+  capabilities = ["read"]
+}
+
+path "secret/metadata/postgres" {
+  capabilities = ["read", "list"]
+}
+EOF
+  echo "✅ Policy 'ldap-user' created."
+fi
+
+# ==========================================
+# 11. LDAP User → Policy mapping
+# ==========================================
+
+echo "⏳ Mapping LDAP user 'repping' to 'ldap-user' policy..."
+vault write auth/ldap/users/repping policies="ldap-user" > /dev/null
+echo "✅ User 'repping' mapped."
+
+# ==========================================
+# 12. Validation & Testing
 # ==========================================
 
 echo -e "\n=== Validation ==="
@@ -170,8 +222,15 @@ echo -e "\nTesting AppRole login:"
 echo "----------------------"
 vault write auth/approle/login role_id="${ROLE_ID}" secret_id="${SECRET_ID}" | grep -E "token |token_policies|token_ttl"
 
+echo -e "\nTesting LDAP auth config:"
+echo "-------------------------"
+vault read auth/ldap/config | grep -E "url|userdn|groupdn|userattr"
+
 echo -e "\nTesting application credentials endpoint (localhost:3000):"
 echo "--------------------------------------------------------"
 curl -s http://localhost:3000/credentials || echo "⚠️ Failed to reach http://localhost:3000/credentials. (Is the app running?)"
 
 echo -e "\n=== Setup Complete ==="
+echo ""
+echo "To test LDAP login manually:"
+echo "  vault login -method=ldap username=repping"
