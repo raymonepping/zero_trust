@@ -1,26 +1,13 @@
-/**
- * pool-manager.js — pg.Pool lifecycle manager with credential rotation support
- *
- * Wraps connector.js to:
- *   1. Create and hold a live pg.Pool
- *   2. Atomically swap the pool when credentials rotate (proactive)
- *   3. Detect auth errors mid-query and trigger reactive rotation + retry
- *   4. Drain the old pool gracefully in the background after swap
- *
- * Compatibility: works with both rotation-aware connectors (startAutoRenewal,
- * onRotation, getLeaseInfo) and simple connectors that only export getCredentials.
- */
-
 "use strict";
 
 const { Pool } = require("pg");
 const connector = require("./connector");
 
-// Auth error codes that indicate credentials were revoked
+// PostgreSQL auth / connection errors that indicate credentials are invalid
 const AUTH_ERROR_CODES = new Set(["28P01", "28000", "08006"]);
 
 const POOL_CONFIG = {
-  max:             10,
+  max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 };
@@ -29,17 +16,17 @@ const POOL_CONFIG = {
 // State
 // ---------------------------------------------------------------------------
 
-let activePool    = null;
-let currentUser   = null;
+let activePool = null;
+let currentUser = null;
 let rotationCount = 0;
 
+let rotationInProgress = null;
+let shuttingDown = false;
+
 // ---------------------------------------------------------------------------
-// Pool creation
+// Credential source classification
 // ---------------------------------------------------------------------------
 
-// Sources that supply their own valid host/credentials for this environment.
-// Simple connectors (wired, env) carry hardcoded values that may not match
-// the actual Docker network — they fall back to DATABASE_URL instead.
 const VAULT_SOURCED = new Set([
   "vault-kv",
   "vault-dynamic",
@@ -48,139 +35,200 @@ const VAULT_SOURCED = new Set([
   "vault-jwt-dynamic",
 ]);
 
+// ---------------------------------------------------------------------------
+// Pool builder
+// ---------------------------------------------------------------------------
+
 function buildPool(credentials) {
   if (VAULT_SOURCED.has(credentials.source)) {
     return new Pool({
-      host:     credentials.host,
-      port:     credentials.port,
+      host: credentials.host,
+      port: credentials.port,
       database: credentials.database,
-      user:     credentials.user,
+      user: credentials.user,
       password: credentials.password,
       ...POOL_CONFIG,
     });
   }
-  // static-config, env-file — use DATABASE_URL from the environment
+
   const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error("No usable DB credentials and DATABASE_URL is not set");
-  return new Pool({ connectionString, ...POOL_CONFIG });
+
+  if (!connectionString) {
+    throw new Error("DATABASE_URL not set");
+  }
+
+  return new Pool({
+    connectionString,
+    ...POOL_CONFIG,
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Atomic pool swap — drain old pool in background
+// Validate new pool before swap
 // ---------------------------------------------------------------------------
 
-async function rotatePool(credentials) {
+async function validatePool(pool) {
+  await pool.query("SELECT 1");
+}
+
+// ---------------------------------------------------------------------------
+// Internal atomic rotation
+// ---------------------------------------------------------------------------
+
+async function performRotation(credentials, reason = "unknown") {
   const oldPool = activePool;
   const newPool = buildPool(credentials);
 
-  // Validate new pool before committing the swap
   try {
-    await newPool.query("SELECT 1");
+    await validatePool(newPool);
   } catch (err) {
     await newPool.end().catch(() => {});
-    throw new Error(`New pool validation failed after rotation: ${err.message}`);
+    throw new Error(`Pool validation failed: ${err.message}`);
   }
 
-  activePool  = newPool;
+  activePool = newPool;
   currentUser = credentials.user;
   rotationCount++;
 
   console.log(
-    `[pool-manager] Pool rotated | user: ${credentials.user} | rotation #${rotationCount}`
+    `[pool-manager] Pool rotated | reason: ${reason} | user: ${credentials.user} | rotation #${rotationCount}`
   );
 
-  // Drain old pool in background
-  if (oldPool) {
-    setImmediate(() => {
-      oldPool.end().catch((err) =>
-        console.error("[pool-manager] Error draining old pool:", err.message)
-      );
-    });
+  if (oldPool && oldPool !== newPool) {
+    try {
+      await oldPool.end();
+    } catch (err) {
+      console.error("[pool-manager] Old pool drain failed:", err.message);
+    }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Rotation handler (called by connector's onRotation callback)
+// Rotation lock wrapper
+// ---------------------------------------------------------------------------
+
+async function rotatePool(credentials, reason = "unknown") {
+  if (rotationInProgress) {
+    await rotationInProgress;
+    return;
+  }
+
+  rotationInProgress = performRotation(credentials, reason);
+
+  try {
+    await rotationInProgress;
+  } finally {
+    rotationInProgress = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Proactive rotation callback
 // ---------------------------------------------------------------------------
 
 async function handleProactiveRotation(credentials) {
   try {
-    await rotatePool(credentials);
+    await rotatePool(credentials, "proactive");
   } catch (err) {
     console.error("[pool-manager] Proactive rotation failed:", err.message);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Public: query — with reactive rotation on auth failure
+// Reactive credential recovery
+// ---------------------------------------------------------------------------
+
+async function recoverFromAuthFailure() {
+  let freshCreds;
+
+  if (typeof connector.forceRotation === "function") {
+    freshCreds = await connector.forceRotation("auth-error");
+  } else {
+    freshCreds = await connector.getCredentials();
+  }
+
+  await rotatePool(freshCreds, "reactive");
+}
+
+// ---------------------------------------------------------------------------
+// Query wrapper
 // ---------------------------------------------------------------------------
 
 async function query(sql, params) {
-  if (!activePool) throw new Error("Pool not initialized — call initialize() first");
+  if (!activePool) {
+    throw new Error("Pool not initialized");
+  }
 
   try {
     return await activePool.query(sql, params);
   } catch (err) {
-    if (!AUTH_ERROR_CODES.has(err.code)) throw err;
+    if (!AUTH_ERROR_CODES.has(err.code)) {
+      throw err;
+    }
 
     console.warn(
-      `[pool-manager] Auth error detected (${err.code}), triggering reactive rotation...`
+      `[pool-manager] Auth error detected (${err.code}), attempting recovery`
     );
 
     try {
-      let freshCreds;
-      if (typeof connector.forceRotation === "function") {
-        freshCreds = await connector.forceRotation("auth-error");
-      } else {
-        freshCreds = await connector.getCredentials();
-      }
-      await rotatePool(freshCreds);
-    } catch (rotErr) {
-      console.error("[pool-manager] Reactive rotation failed:", rotErr.message);
-      throw err; // throw original auth error
+      await recoverFromAuthFailure();
+    } catch (rotationErr) {
+      console.error(
+        "[pool-manager] Reactive rotation failed:",
+        rotationErr.message
+      );
+      throw err;
     }
 
-    // Retry once with fresh credentials
     return activePool.query(sql, params);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Public: initialize
+// Initialize
 // ---------------------------------------------------------------------------
 
 async function initialize() {
   let credentials;
 
   if (typeof connector.startAutoRenewal === "function") {
-    // Rotation-aware connector: startAutoRenewal fetches initial creds and
-    // kicks off the proactive renewal timer
     connector.onRotation(handleProactiveRotation);
     credentials = await connector.startAutoRenewal();
+
     console.log("[pool-manager] Auto-renewal mode active");
   } else {
-    // Simple connector (wired, env, vault-kv, etc.): fetch once, no rotation
     credentials = await connector.getCredentials();
-    console.log("[pool-manager] Simple connector mode (no auto-renewal)");
+
+    console.log("[pool-manager] Simple credential mode");
   }
 
-  await rotatePool(credentials);
+  await rotatePool(credentials, "initial");
+
   console.log("[pool-manager] Initialized");
 }
 
 // ---------------------------------------------------------------------------
-// Public: shutdown
+// Shutdown
 // ---------------------------------------------------------------------------
 
 async function shutdown() {
+  shuttingDown = true;
+
   if (typeof connector.stop === "function") {
     connector.stop();
   }
 
+  if (rotationInProgress) {
+    await rotationInProgress.catch(() => {});
+  }
+
   if (activePool) {
-    await activePool.end().catch((err) =>
-      console.error("[pool-manager] Error during shutdown:", err.message)
-    );
+    try {
+      await activePool.end();
+    } catch (err) {
+      console.error("[pool-manager] Shutdown drain failed:", err.message);
+    }
+
     activePool = null;
   }
 
@@ -188,7 +236,7 @@ async function shutdown() {
 }
 
 // ---------------------------------------------------------------------------
-// Public: getStatus
+// Status
 // ---------------------------------------------------------------------------
 
 function getStatus() {
@@ -200,10 +248,12 @@ function getStatus() {
   return {
     currentUser,
     rotationCount,
+    rotationActive: !!rotationInProgress,
+    shuttingDown,
     pool: activePool
       ? {
-          totalCount:   activePool.totalCount,
-          idleCount:    activePool.idleCount,
+          totalCount: activePool.totalCount,
+          idleCount: activePool.idleCount,
           waitingCount: activePool.waitingCount,
         }
       : null,
@@ -211,4 +261,9 @@ function getStatus() {
   };
 }
 
-module.exports = { initialize, shutdown, query, getStatus };
+module.exports = {
+  initialize,
+  shutdown,
+  query,
+  getStatus,
+};
