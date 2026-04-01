@@ -1,172 +1,87 @@
 # Zero Trust Workshop
 
-A hands-on workshop environment demonstrating zero trust principles using HashiCorp Vault, PostgreSQL, Ollama, and a modern React frontend — all orchestrated with Docker Compose.
+A hands-on workshop demonstrating progressive credential security patterns using HashiCorp Vault, PostgreSQL, Keycloak, OpenLDAP, Ollama, and a modern React frontend — all orchestrated with Docker Compose.
 
-The core idea: applications should never hold long-lived credentials in config files or environment variables. Instead, credentials are retrieved at runtime from Vault — and eventually generated dynamically per request.
+**Core principle:** applications should never hold long-lived credentials. Credentials are retrieved at runtime from Vault — and as the workshop progresses, become dynamically generated, short-lived, automatically rotated, and backed by federated identity.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────┐     /api/*      ┌─────────────┐     SQL      ┌──────────────┐
-│   Frontend  │ ──────────────► │   Backend   │ ───────────► │  PostgreSQL  │
-│  React/Vite │                 │  Express.js │              │   (appdb)    │
-└─────────────┘                 └──────┬──────┘              └──────────────┘
-                                       │
-                              ┌────────┴────────┐
-                              │                 │
-                         ┌────▼────┐      ┌─────▼──────┐
-                         │  Vault  │      │   Ollama   │
-                         │  (KV)   │      │  llama3.2  │
-                         └─────────┘      └────────────┘
+┌──────────────┐   /api/*    ┌──────────────┐    SQL     ┌──────────────┐
+│   Frontend   │ ──────────► │   Backend    │ ─────────► │  PostgreSQL  │
+│ React / Vite │             │  Express.js  │            │   (appdb)    │
+└──────────────┘             └──────┬───────┘            └──────────────┘
+                                    │
+                   ┌────────────────┼────────────────┐
+                   │                │                │
+            ┌──────▼──────┐  ┌──────▼──────┐  ┌─────▼──────┐
+            │    Vault    │  │   Ollama    │  │  Keycloak  │
+            │  Enterprise │  │  llama3.2  │  │   (OIDC)   │
+            └──────┬──────┘  └─────────────┘  └─────┬──────┘
+                   │                                 │
+            ┌──────▼──────┐                   ┌──────▼──────┐
+            │  PostgreSQL │                   │  OpenLDAP   │
+            │ DB Engine   │                   │   (users)   │
+            └─────────────┘                   └─────────────┘
 ```
+
+### Network Isolation
+
+| Network | Services | External |
+| --- | --- | --- |
+| `net-frontend` | frontend, backend | No |
+| `net-backend` | backend, frontend | No |
+| `net-data` | backend, db, vault, ollama, ldap, keycloak | No |
+| `net-egress` | ollama | Yes (model pulls only) |
+
+The frontend cannot reach the database or Vault directly — all access goes through the backend.
 
 ---
 
 ## Services
 
-### Frontend — `./frontend`
-
-A React 19 + Vite 6 single-page application.
-
-- **Port:** `5173`
-- **Features:**
-  - Live PostgreSQL connection indicator (green/red pulsing dot)
-  - Live Vault credential indicator (yellow pulsing dot) — shows the KV path and username being used
-  - Natural language Q&A panel backed by Ollama with suggestion chips and streaming responses
-- **Proxy:** All `/api/*` requests are proxied to the backend at `http://backend:3000`
-
-```bash
-# Rebuild after source changes
-docker-compose up -d --build frontend
-```
+| Service | Image | Port | Description |
+| --- | --- | --- | --- |
+| `frontend` | `repping/zero-trust-frontend` | 5173 | React + Vite UI |
+| `backend` | `repping/zero-trust-backend` | 3000 | Express.js API |
+| `db` | `postgres:17.4` | 5432 | PostgreSQL database |
+| `vault` | `hashicorp/vault-enterprise:1.21.3-ent` | 8200 | Vault Enterprise |
+| `ollama` | custom | 11434 | Local LLM (llama3.2) |
+| `openldap` | `osixia/openldap:1.5.0` | 1389 | LDAP directory |
+| `ldap-admin` | `osixia/phpldapadmin` | 8081 | LDAP web UI |
+| `keycloak` | `quay.io/keycloak/keycloak` | 8082 | OIDC identity provider |
 
 ---
 
-### Backend — `./backend`
+## Workshop Phases
 
-A Node.js + Express 5 REST API.
+The workshop progresses through phases of increasing credential security. Each phase is represented by a swappable `connector.js` — switch between them with `./scripts/switch_connector.sh`.
 
-- **Port:** `3000`
-- **Hot reload:** nodemon watches for file changes — no rebuild needed during development
-- **Key file:** `connector.js` — the swappable credential provider (see below)
+| Phase | Connector | Auth chain | Data access |
+| --- | --- | --- | --- |
+| 0a | `wired` | Hardcoded credentials in code | Public only |
+| 0b | `env` | Credentials from env variables | Public only |
+| 1 | `vault` | Vault KV v2 static secret | Public + Internal |
+| 2 | `dynamic` | Vault database engine — short-lived creds | Public + Internal |
+| 3a | `approle` | AppRole → scoped token → KV creds | Public + Internal + Confidential |
+| 3b | `approle-dynamic` | AppRole → scoped token → dynamic creds | Public + Internal + Confidential |
+| 4 | `approle-rotation` | AppRole + dynamic creds + proactive rotation at 75% TTL | Public + Internal + Confidential |
+| 5 | `jwt-rotation` | Keycloak JWT → Vault token → dynamic creds + rotation | All (including Restricted) |
 
-#### API Endpoints
+### Data Classification
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Returns `{ db: "connected" }` |
-| `GET` | `/users` | All users |
-| `GET` | `/orders` | All orders joined with user names |
-| `GET` | `/preferences` | All preferences joined with user names |
-| `GET` | `/credentials` | Fetches DB credentials from Vault via `connector.js` |
-| `POST` | `/ask` | Sends a question to Ollama with DB context; streams the response |
+Every order and preference row carries a classification label:
 
-#### Environment variables
+| Level | Label | Visible from phase |
+| --- | --- | --- |
+| 0 | `public` | Any connector |
+| 1 | `internal` | Vault KV or higher |
+| 2 | `confidential` | AppRole or higher |
+| 3 | `restricted` | JWT rotation only |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | — | Full Postgres connection string |
-| `VAULT_ADDR` | `http://vault:8200` | Vault server address |
-| `VAULT_TOKEN` | — | Vault token (loaded from root `.env`) |
-| `VAULT_KV_PATH` | `secret/data/postgres` | KV v2 path for DB credentials |
-| `OLLAMA_ADDR` | `http://ollama:11434` | Ollama server address |
-
----
-
-### connector.js — the swappable credential provider
-
-`./backend/connector.js` is volume-mounted into the container. Edit it locally and the backend hot-reloads automatically — no rebuild needed.
-
-**Phase 1 (current):** reads static credentials from Vault KV v2
-
-```js
-// Returns credentials from Vault KV at VAULT_KV_PATH
-async function getCredentials() { ... }
-```
-
-**Phase 2 (next):** replace the body of `getCredentials()` to call the Vault database secrets engine and receive short-lived, auto-rotated credentials instead.
-
-To seed the KV secret:
-
-```bash
-vault kv put secret/postgres \
-  username=appuser \
-  password=apppassword \
-  host=db \
-  port=5432 \
-  database=appdb
-```
-
----
-
-### Database — `./db`
-
-PostgreSQL 17 with a custom Dockerfile that auto-runs `seed.sql` on first start.
-
-- **Port:** `5432`
-- **Database:** `appdb`
-- **Credentials:** `appuser` / `apppassword`
-- **Persistence:** `db_data` named volume
-
-#### Schema
-
-```sql
-users        -- id, first_name, last_name, email, city, country, joined
-orders       -- id, user_id, item, category, quantity, price, ordered_at
-preferences  -- id, user_id, category, value
-```
-
-#### Seeding
-
-```bash
-./scripts/seed_db.sh
-```
-
-Reads from `./data/users.json` and `./data/activity.json`. Idempotent — safe to run multiple times.
-
----
-
-### Vault — HashiCorp Vault Enterprise
-
-- **Port:** `8200`
-- **UI:** http://localhost:8200/ui
-- **Config:** `./vault/config.hcl` (Raft storage, TLS disabled for local dev)
-- **License:** `./vault/config/vault.hclic`
-
-Vault starts **sealed** after every container restart. Unseal with:
-
-```bash
-./scripts/unseal_vault.sh
-```
-
-The script reads unseal keys from `./vault/init.txt` (gitignored) and applies the first 3 of 5 Shamir keys automatically.
-
-The root token is stored in `.env` (gitignored) and referenced in docker-compose as `${VAULT_TOKEN}`.
-
-#### Enable KV secrets engine (first time only)
-
-```bash
-vault secrets enable -path=secret kv-v2
-```
-
----
-
-### Ollama — `./ollama`
-
-Local LLM inference server.
-
-- **Port:** `11434`
-- **Models:**
-  - `llama3.2` (3B) — chat model used by the `/ask` endpoint
-  - `nomic-embed-text` — embedding model (ready for RAG in a later phase)
-- **Persistence:** `ollama_data` named volume — models survive container rebuilds
-
-Models are pulled automatically on first start. Subsequent starts skip the download.
-
-> Ollama requires at least **4 GB of memory** allocated to the container runtime.
-> With Podman: `podman machine set --memory 6144 && podman machine start`
+The backend enforces this at query time — the LLM never receives data it isn't allowed to see.
 
 ---
 
@@ -174,64 +89,290 @@ Models are pulled automatically on first start. Subsequent starts skip the downl
 
 ### Prerequisites
 
-- Docker or Podman (with Compose)
-- `vault` CLI (for setup commands)
-- `jq` (for the seed script)
+- Docker or Podman with Compose
+- `vault` CLI
+- `jq`
+- A Vault Enterprise license file at `./vault/config/vault.hclic`
 
 ### First-time setup
 
 ```bash
-# 1. Start all services
-docker-compose up -d
+# 1. Create the audit log directory (Vault writes here)
+mkdir -p ./vault/audit
+chmod 777 ./vault/audit
 
-# 2. Unseal Vault
+# 2. Copy the env template and fill in your values
+cp .env.example .env   # or edit .env directly
+
+# 3. Start all services
+docker compose up -d
+
+# 4. Unseal Vault (reads keys from vault/init.txt)
 ./scripts/unseal_vault.sh
 
-# 3. Enable KV secrets engine
+# 5. Configure Vault (idempotent — safe to re-run)
 export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN=<root-token-from-vault/init.txt>
-vault secrets enable -path=secret kv-v2
+./scripts/setup_vault.sh
 
-# 4. Write DB credentials to Vault
-vault kv put secret/postgres \
-  username=appuser password=apppassword \
-  host=db port=5432 database=appdb
-
-# 5. Seed the database
+# 6. Seed the database
 ./scripts/seed_db.sh
+
+# 7. Bootstrap LDAP users
+LDAP_HOST=localhost LDAP_PORT=1389 ./scripts/setup_ldap.sh
 ```
 
 ### Subsequent starts
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ./scripts/unseal_vault.sh
 ```
 
 ---
 
-## Development
+## Configuration — `.env`
 
-The backend uses **nodemon** for hot reload. Edit any file in `./backend/` and the server restarts automatically — no `docker-compose up --build` needed.
+All backend environment variables live in the root `.env` file (gitignored). Docker Compose loads it via `env_file: .env` on the backend service.
 
-`connector.js` is volume-mounted separately, meaning you can swap the credential strategy without touching the rest of the backend.
+```ini
+# Backend
+NODE_ENV=development
+PORT=3000
+
+# Database
+DATABASE_URL=postgres://appuser:apppassword@db:5432/appdb
+
+# Ollama
+OLLAMA_ADDR=http://ollama:11434
+
+# Vault
+VAULT_ADDR=http://vault:8200
+VAULT_TOKEN=hvs.xxxx
+VAULT_MODE=dynamic
+VAULT_DB_ROLE=app-role
+VAULT_KV_PATH=secret/data/postgres
+
+# AppRole (phases 3a / 3b / 4)
+VAULT_ROLE_ID=<role-id-from-setup_vault.sh>
+VAULT_SECRET_ID=<secret-id-from-setup_vault.sh>
+
+# Keycloak JWT (phase 5)
+KEYCLOAK_ADDR=http://keycloak:8080
+KEYCLOAK_REALM=zero-trust
+KEYCLOAK_CLIENT_ID=backend
+KEYCLOAK_CLIENT_SECRET=<client-secret-from-keycloak>
+KEYCLOAK_USERNAME=repping
+KEYCLOAK_PASSWORD=password
+VAULT_JWT_ROLE=zero-trust-jwt-lab
+```
+
+> `VAULT_ROLE_ID` and `VAULT_SECRET_ID` are printed by `./scripts/setup_vault.sh` at the end of each run.
 
 ---
 
-## Scripts
+## Switching Connector Phases
+
+```bash
+# Show current phase
+./scripts/switch_connector.sh --current
+
+# List all available phases
+./scripts/switch_connector.sh --list
+
+# Switch to a phase (fetches from GitHub, restarts backend)
+./scripts/switch_connector.sh --replace-with jwt-rotation
+```
+
+Connectors are fetched from `https://raw.githubusercontent.com/raymonepping/zero_trust/refs/heads/main/data/`.
+
+---
+
+## API Reference
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/` | Health check — DB connectivity |
+| `GET` | `/health` | Extended health — DB + Vault status, sealed state |
+| `GET` | `/users` | All users |
+| `GET` | `/orders` | Orders filtered by current trust level |
+| `GET` | `/preferences` | Preferences filtered by current trust level |
+| `GET` | `/credentials` | Active credential metadata — source, trust level, classification access, lease info |
+| `POST` | `/ask` | Natural language query — context filtered by trust level, streamed Ollama response |
+
+### `/health` response
+
+```json
+{
+  "status": "ok",
+  "db": "connected",
+  "vault": {
+    "status": "active",
+    "ok": true,
+    "sealed": false,
+    "version": "1.21.3+ent"
+  }
+}
+```
+
+`status` is `"degraded"` when Vault is down but the DB is still reachable — the app continues serving public data.
+
+### `/credentials` response
+
+```json
+{
+  "source": "vault-jwt-dynamic",
+  "trust_level": 3,
+  "allowed_classifications": ["public", "internal", "confidential", "restricted"],
+  "username": "v-jwt-repp-app-role-xxxx",
+  "ttl": 3600,
+  "leaseId": "database/creds/app-role/xxxx",
+  "lease": { "status": "active", "remainingSec": 3418 },
+  "rotations": 1
+}
+```
+
+---
+
+## Database Schema
+
+```sql
+users        -- id, first_name, last_name, email, phone, city, country, joined
+orders       -- id, user_id, item, category, quantity, price, ordered_at, classification
+preferences  -- id, user_id, category, value, classification
+```
+
+### Seeding
+
+```bash
+./scripts/seed_db.sh
+```
+
+Reads from `./data/users.json` (5 users) and `./data/activity.json` (24 orders, 32 preferences). Truncates and re-seeds on every run — safe for workshop use.
+
+---
+
+## Vault Setup
+
+`./scripts/setup_vault.sh` configures everything idempotently:
+
+1. KV v2 secrets engine + `secret/postgres` static secret
+2. Database secrets engine + PostgreSQL connection + `app-role` role (1h TTL)
+3. AppRole auth method + `app-policy` + `zero-trust-app` role
+4. LDAP auth method + connection to OpenLDAP + `ldap-user` policy + user mapping
+5. JWT auth method + Keycloak JWKS config + `zero-trust-jwt-lab` role
+6. File audit device at `/vault/audit/vault-audit.log`
+
+Re-running the script is safe — existing resources are skipped, policies are always rewritten with the correct content.
+
+```bash
+export VAULT_ADDR=http://127.0.0.1:8200
+export VAULT_TOKEN=<root-token>
+./scripts/setup_vault.sh
+```
+
+### Vault Audit Log
+
+```bash
+# Live tail — summarised format
+./scripts/audit_log.sh
+
+# Filter by path
+./scripts/audit_log.sh --path database/creds
+
+# Filter by operation
+./scripts/audit_log.sh --op write
+
+# Last 20 entries, no follow
+./scripts/audit_log.sh --lines 20 --no-follow
+
+# Rotate log (moves current file, sends SIGHUP to Vault)
+./scripts/rotate_vault_audit.sh
+./scripts/rotate_vault_audit.sh --keep 14
+```
+
+---
+
+## LDAP Directory
+
+OpenLDAP is pre-populated via `./scripts/setup_ldap.sh` from `./ldap/bootstrap.ldif`.
+
+| User | Password | Group |
+| --- | --- | --- |
+| `repping` | `password` | developers |
+| `depping` | `password` | developers |
+| `alice` | `alice123` | developers |
+| `bob` | `bob123` | developers |
+| `charlie` | `charlie123` | developers |
+
+**Admin UI:** [http://localhost:8081](http://localhost:8081) (login: `cn=admin,dc=my,dc=org` / `admin`)
+
+---
+
+## Keycloak (OIDC / JWT)
+
+Keycloak is used in Phase 5 to issue JWTs that Vault validates before granting a scoped token.
+
+**Admin UI:** [http://localhost:8082](http://localhost:8082) (login: `admin` / `admin`)
+
+**Realm:** `zero-trust`  
+**Client:** `backend`
+
+The LDAP federation is configured in Keycloak's user federation settings pointing to `ldap://openldap:389`. After syncing, all LDAP users can authenticate through Keycloak.
+
+### Test JWT login
+
+```bash
+# Get a Keycloak JWT
+TOKEN=$(curl -s -X POST "http://localhost:8082/realms/zero-trust/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=password&client_id=backend&username=repping&password=password&scope=openid" \
+  -d "client_secret=${KEYCLOAK_CLIENT_SECRET}" | jq -r '.access_token')
+
+# Exchange for a Vault token
+vault write auth/jwt/login role=zero-trust-jwt-lab jwt="${TOKEN}"
+```
+
+---
+
+## Publishing Images
+
+```bash
+# Build and push both images (default version: 1.0.0)
+./scripts/setup_images.sh
+
+# Custom version
+./scripts/setup_images.sh 1.2.0
+
+# Custom version and registry user
+./scripts/setup_images.sh 1.2.0 myuser
+```
+
+---
+
+## Scripts Reference
 
 | Script | Description |
-|--------|-------------|
-| `./scripts/unseal_vault.sh` | Unseals Vault using keys from `vault/init.txt` |
-| `./scripts/seed_db.sh` | Seeds users, orders, and preferences from JSON files in `./data/` |
+| --- | --- |
+| `./scripts/unseal_vault.sh` | Unseals Vault using Shamir keys from `vault/init.txt` |
+| `./scripts/setup_vault.sh` | Configures all Vault engines, auth methods, policies, and audit |
+| `./scripts/setup_ldap.sh` | Bootstraps LDAP directory from `ldap/bootstrap.ldif` |
+| `./scripts/seed_db.sh` | Seeds users, orders, and preferences from `./data/*.json` |
+| `./scripts/switch_connector.sh` | Swaps `backend/connector.js` with a phase-specific version and restarts the backend |
+| `./scripts/setup_images.sh` | Builds and pushes Docker images for backend and frontend |
+| `./scripts/audit_log.sh` | Tails and filters the Vault audit log |
+| `./scripts/rotate_vault_audit.sh` | Rotates the Vault audit log file via SIGHUP |
 
 ---
 
 ## Security Notes
 
-- `vault/init.txt`, `vault/config/vault.hclic`, `vault/data/`, and all `.env` files are gitignored
-- The Vault token is passed via the root `.env` file and referenced as `${VAULT_TOKEN}` in docker-compose — never hardcoded
-- TLS is disabled for local development only — enable it before any production or shared deployment
+- `vault/init.txt`, `vault/config/vault.hclic`, `vault/data/`, `vault/audit/`, and `.env` are all gitignored
+- TLS is disabled for local development — enable it before any shared or production deployment
+- `log_raw=false` on the audit device — secrets are HMAC'd, not logged in plaintext
+- The backend HTTP 503s only when the DB is down — Vault unavailability degrades to `public` data access without crashing
+- Dynamic credentials are auto-expired by Vault — no manual revocation needed
+- The frontend cannot communicate with Vault, the DB, or LDAP directly (internal Docker networks)
 
 ---
 
