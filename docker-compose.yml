@@ -30,6 +30,7 @@ services:
     volumes:
       - ./vault/config.hcl:/vault/config/config.hcl:Z
       - ./vault/config/vault.hclic:/vault/config/vault.hclic:Z
+      - ./vault/audit:/vault/audit
     environment:
       VAULT_ADDR: "http://127.0.0.1:8200"
       VAULT_LICENSE_PATH: "/vault/config/vault.hclic"
@@ -64,7 +65,7 @@ services:
       start_period: 60s
 
   backend:
-    image: repping/zero-trust-backend:1.0.0
+    image: repping/zero-trust-backend:1.2.0
     container_name: zero_trust_backend
     environment:
       NODE_ENV: development
@@ -99,7 +100,7 @@ services:
       - net-data
 
   frontend:
-    image: repping/zero-trust-frontend:1.0.0
+    image: repping/zero-trust-frontend:1.2.0
     container_name: zero_trust_frontend
     environment:
       VITE_API_URL: http://localhost:3000

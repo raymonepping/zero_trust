@@ -123,6 +123,7 @@ docker-compose.override.yml
 vault/init.txt
 vault/config/vault.hclic
 vault/data/
+vault/audit/
 
 ########################################
 # 🛠️ Terraform

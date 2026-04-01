@@ -6,7 +6,8 @@
       "category": "Tech",
       "quantity": 1,
       "price": 189.99,
-      "ordered_at": "2024-01-08"
+      "ordered_at": "2024-01-08",
+      "classification": "internal"
     },
     {
       "user_id": 1,
@@ -14,7 +15,8 @@
       "category": "Tech",
       "quantity": 1,
       "price": 349.00,
-      "ordered_at": "2024-02-14"
+      "ordered_at": "2024-02-14",
+      "classification": "internal"
     },
     {
       "user_id": 1,
@@ -22,7 +24,8 @@
       "category": "Education",
       "quantity": 1,
       "price": 19.99,
-      "ordered_at": "2024-03-01"
+      "ordered_at": "2024-03-01",
+      "classification": "public"
     },
     {
       "user_id": 1,
@@ -30,7 +33,8 @@
       "category": "Office",
       "quantity": 2,
       "price": 49.95,
-      "ordered_at": "2024-03-22"
+      "ordered_at": "2024-03-22",
+      "classification": "public"
     },
     {
       "user_id": 1,
@@ -38,7 +42,26 @@
       "category": "Food & Drink",
       "quantity": 1,
       "price": 74.00,
-      "ordered_at": "2024-04-05"
+      "ordered_at": "2024-04-05",
+      "classification": "public"
+    },
+    {
+      "user_id": 1,
+      "item": "Apple MacBook Pro 16-inch M3 Max",
+      "category": "Tech",
+      "quantity": 1,
+      "price": 3499.00,
+      "ordered_at": "2024-05-10",
+      "classification": "confidential"
+    },
+    {
+      "user_id": 1,
+      "item": "Security Audit Consulting – 2 days",
+      "category": "Professional Services",
+      "quantity": 1,
+      "price": 4800.00,
+      "ordered_at": "2024-06-01",
+      "classification": "restricted"
     },
     {
       "user_id": 2,
@@ -46,7 +69,8 @@
       "category": "Audio",
       "quantity": 1,
       "price": 299.00,
-      "ordered_at": "2024-01-20"
+      "ordered_at": "2024-01-20",
+      "classification": "internal"
     },
     {
       "user_id": 2,
@@ -54,7 +78,8 @@
       "category": "Sports",
       "quantity": 1,
       "price": 129.99,
-      "ordered_at": "2024-02-03"
+      "ordered_at": "2024-02-03",
+      "classification": "public"
     },
     {
       "user_id": 2,
@@ -62,59 +87,328 @@
       "category": "Kitchen",
       "quantity": 1,
       "price": 89.95,
-      "ordered_at": "2024-03-11"
+      "ordered_at": "2024-03-11",
+      "classification": "public"
+    },
+    {
+      "user_id": 2,
+      "item": "VMware vSphere License – Enterprise",
+      "category": "Software",
+      "quantity": 1,
+      "price": 6200.00,
+      "ordered_at": "2024-04-22",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 2,
+      "item": "Dell PowerEdge R750 Server",
+      "category": "Infrastructure",
+      "quantity": 2,
+      "price": 8450.00,
+      "ordered_at": "2024-05-30",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 3,
+      "item": "iPad Pro 13-inch M4",
+      "category": "Tech",
+      "quantity": 1,
+      "price": 1299.00,
+      "ordered_at": "2024-02-10",
+      "classification": "internal"
+    },
+    {
+      "user_id": 3,
+      "item": "Yoga Mat – Lululemon 5mm",
+      "category": "Sports",
+      "quantity": 1,
+      "price": 88.00,
+      "ordered_at": "2024-02-28",
+      "classification": "public"
+    },
+    {
+      "user_id": 3,
+      "item": "Cloud Security Handbook – O'Reilly",
+      "category": "Education",
+      "quantity": 1,
+      "price": 59.99,
+      "ordered_at": "2024-03-15",
+      "classification": "public"
+    },
+    {
+      "user_id": 3,
+      "item": "Penetration Testing Contract – Q2",
+      "category": "Professional Services",
+      "quantity": 1,
+      "price": 12500.00,
+      "ordered_at": "2024-04-01",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 4,
+      "item": "Ergonomic Office Chair – Herman Miller Aeron",
+      "category": "Office",
+      "quantity": 1,
+      "price": 1495.00,
+      "ordered_at": "2024-01-15",
+      "classification": "internal"
+    },
+    {
+      "user_id": 4,
+      "item": "Python for Data Science – Coursera Annual",
+      "category": "Education",
+      "quantity": 1,
+      "price": 399.00,
+      "ordered_at": "2024-02-20",
+      "classification": "public"
+    },
+    {
+      "user_id": 4,
+      "item": "AWS re:Invent Conference Ticket",
+      "category": "Events",
+      "quantity": 1,
+      "price": 1800.00,
+      "ordered_at": "2024-03-05",
+      "classification": "confidential"
+    },
+    {
+      "user_id": 4,
+      "item": "Zero Trust Architecture Consulting – 5 days",
+      "category": "Professional Services",
+      "quantity": 1,
+      "price": 15000.00,
+      "ordered_at": "2024-05-15",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 5,
+      "item": "Noise-Cancelling Headset – Jabra Evolve2 85",
+      "category": "Tech",
+      "quantity": 1,
+      "price": 449.00,
+      "ordered_at": "2024-02-05",
+      "classification": "internal"
+    },
+    {
+      "user_id": 5,
+      "item": "Standing Desk – Flexispot E7",
+      "category": "Office",
+      "quantity": 1,
+      "price": 599.00,
+      "ordered_at": "2024-03-20",
+      "classification": "internal"
+    },
+    {
+      "user_id": 5,
+      "item": "Terraform Associate Certification Exam",
+      "category": "Education",
+      "quantity": 1,
+      "price": 70.50,
+      "ordered_at": "2024-04-10",
+      "classification": "public"
+    },
+    {
+      "user_id": 5,
+      "item": "HashiCorp Vault Enterprise License",
+      "category": "Software",
+      "quantity": 1,
+      "price": 28000.00,
+      "ordered_at": "2024-06-15",
+      "classification": "restricted"
     }
   ],
   "preferences": [
     {
       "user_id": 1,
       "category": "Music",
-      "value": "Electronic, Techno, Deep House"
+      "value": "Electronic, Techno, Deep House",
+      "classification": "public"
     },
     {
       "user_id": 1,
       "category": "Sports",
-      "value": "Cycling, Swimming"
+      "value": "Cycling, Swimming",
+      "classification": "public"
     },
     {
       "user_id": 1,
       "category": "Cuisine",
-      "value": "Japanese, Italian"
+      "value": "Japanese, Italian",
+      "classification": "public"
     },
     {
       "user_id": 1,
       "category": "Tech Interests",
-      "value": "DevOps, Security, Cloud Infrastructure, HashiCorp tooling"
+      "value": "DevOps, Security, Cloud Infrastructure, HashiCorp tooling",
+      "classification": "internal"
     },
     {
       "user_id": 1,
       "category": "Travel",
-      "value": "Japan, Iceland, Portugal"
+      "value": "Japan, Iceland, Portugal",
+      "classification": "public"
+    },
+    {
+      "user_id": 1,
+      "category": "Salary Band",
+      "value": "L6 – Senior Principal",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 1,
+      "category": "Security Clearance",
+      "value": "Level 3 – Confidential",
+      "classification": "restricted"
     },
     {
       "user_id": 2,
       "category": "Music",
-      "value": "Jazz, Classical, Indie Rock"
+      "value": "Jazz, Classical, Indie Rock",
+      "classification": "public"
     },
     {
       "user_id": 2,
       "category": "Sports",
-      "value": "Running, Hiking, Football"
+      "value": "Running, Hiking, Football",
+      "classification": "public"
     },
     {
       "user_id": 2,
       "category": "Cuisine",
-      "value": "Italian, Mediterranean, Street Food"
+      "value": "Italian, Mediterranean, Street Food",
+      "classification": "public"
     },
     {
       "user_id": 2,
       "category": "Tech Interests",
-      "value": "Frontend Development, UI/UX, Open Source"
+      "value": "Virtualisation, Storage, Cloud Infrastructure",
+      "classification": "internal"
     },
     {
       "user_id": 2,
       "category": "Travel",
-      "value": "Italy, Morocco, New Zealand"
+      "value": "Italy, Morocco, New Zealand",
+      "classification": "public"
+    },
+    {
+      "user_id": 2,
+      "category": "Salary Band",
+      "value": "L7 – Distinguished Engineer",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 2,
+      "category": "Security Clearance",
+      "value": "Level 4 – Secret",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 3,
+      "category": "Music",
+      "value": "Pop, R&B, Soul",
+      "classification": "public"
+    },
+    {
+      "user_id": 3,
+      "category": "Sports",
+      "value": "Yoga, Pilates, Tennis",
+      "classification": "public"
+    },
+    {
+      "user_id": 3,
+      "category": "Cuisine",
+      "value": "Thai, Lebanese, Vegan",
+      "classification": "public"
+    },
+    {
+      "user_id": 3,
+      "category": "Tech Interests",
+      "value": "Security Engineering, Penetration Testing, Zero Trust",
+      "classification": "internal"
+    },
+    {
+      "user_id": 3,
+      "category": "Travel",
+      "value": "Thailand, Canada, South Africa",
+      "classification": "public"
+    },
+    {
+      "user_id": 3,
+      "category": "Salary Band",
+      "value": "L5 – Staff Engineer",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 4,
+      "category": "Music",
+      "value": "Hip Hop, Funk, Blues",
+      "classification": "public"
+    },
+    {
+      "user_id": 4,
+      "category": "Sports",
+      "value": "Basketball, Surfing, Rock Climbing",
+      "classification": "public"
+    },
+    {
+      "user_id": 4,
+      "category": "Cuisine",
+      "value": "Mexican, Korean BBQ, Cajun",
+      "classification": "public"
+    },
+    {
+      "user_id": 4,
+      "category": "Tech Interests",
+      "value": "Data Science, MLOps, Cloud Architecture",
+      "classification": "internal"
+    },
+    {
+      "user_id": 4,
+      "category": "Travel",
+      "value": "Japan, Brazil, Australia",
+      "classification": "public"
+    },
+    {
+      "user_id": 4,
+      "category": "Salary Band",
+      "value": "L5 – Staff Engineer",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 5,
+      "category": "Music",
+      "value": "Techno, Ambient, Krautrock",
+      "classification": "public"
+    },
+    {
+      "user_id": 5,
+      "category": "Sports",
+      "value": "Football, Cycling, Bouldering",
+      "classification": "public"
+    },
+    {
+      "user_id": 5,
+      "category": "Cuisine",
+      "value": "German, Japanese, Lebanese",
+      "classification": "public"
+    },
+    {
+      "user_id": 5,
+      "category": "Tech Interests",
+      "value": "Platform Engineering, IaC, HashiCorp Stack",
+      "classification": "internal"
+    },
+    {
+      "user_id": 5,
+      "category": "Travel",
+      "value": "Japan, Argentina, Norway",
+      "classification": "public"
+    },
+    {
+      "user_id": 5,
+      "category": "Salary Band",
+      "value": "L4 – Senior Engineer",
+      "classification": "restricted"
     }
   ]
 }

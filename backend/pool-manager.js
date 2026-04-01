@@ -37,15 +37,32 @@ let rotationCount = 0;
 // Pool creation
 // ---------------------------------------------------------------------------
 
+// Sources that supply their own valid host/credentials for this environment.
+// Simple connectors (wired, env) carry hardcoded values that may not match
+// the actual Docker network — they fall back to DATABASE_URL instead.
+const VAULT_SOURCED = new Set([
+  "vault-kv",
+  "vault-dynamic",
+  "vault-approle",
+  "vault-approle-dynamic",
+  "vault-jwt-dynamic",
+]);
+
 function buildPool(credentials) {
-  return new Pool({
-    host:     credentials.host,
-    port:     credentials.port,
-    database: credentials.database,
-    user:     credentials.user,
-    password: credentials.password,
-    ...POOL_CONFIG,
-  });
+  if (VAULT_SOURCED.has(credentials.source)) {
+    return new Pool({
+      host:     credentials.host,
+      port:     credentials.port,
+      database: credentials.database,
+      user:     credentials.user,
+      password: credentials.password,
+      ...POOL_CONFIG,
+    });
+  }
+  // static-config, env-file — use DATABASE_URL from the environment
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("No usable DB credentials and DATABASE_URL is not set");
+  return new Pool({ connectionString, ...POOL_CONFIG });
 }
 
 // ---------------------------------------------------------------------------

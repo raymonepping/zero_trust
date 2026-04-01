@@ -44,22 +44,51 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-  id          SERIAL PRIMARY KEY,
-  user_id     INT NOT NULL REFERENCES users(id),
-  item        TEXT NOT NULL,
-  category    TEXT,
-  quantity    INT NOT NULL DEFAULT 1,
-  price       NUMERIC(10,2),
-  ordered_at  DATE
+  id              SERIAL PRIMARY KEY,
+  user_id         INT NOT NULL REFERENCES users(id),
+  item            TEXT NOT NULL,
+  category        TEXT,
+  quantity        INT NOT NULL DEFAULT 1,
+  price           NUMERIC(10,2),
+  ordered_at      DATE,
+  classification  TEXT NOT NULL DEFAULT 'internal'
+    CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'))
 );
 
 CREATE TABLE IF NOT EXISTS preferences (
-  id          SERIAL PRIMARY KEY,
-  user_id     INT NOT NULL REFERENCES users(id),
-  category    TEXT NOT NULL,
-  value       TEXT NOT NULL
+  id              SERIAL PRIMARY KEY,
+  user_id         INT NOT NULL REFERENCES users(id),
+  category        TEXT NOT NULL,
+  value           TEXT NOT NULL,
+  classification  TEXT NOT NULL DEFAULT 'internal'
+    CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'))
 );
+
+-- Add classification column to existing tables if upgrading from older schema
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='orders' AND column_name='classification'
+  ) THEN
+    ALTER TABLE orders ADD COLUMN classification TEXT NOT NULL DEFAULT 'internal'
+      CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='preferences' AND column_name='classification'
+  ) THEN
+    ALTER TABLE preferences ADD COLUMN classification TEXT NOT NULL DEFAULT 'internal'
+      CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'));
+  END IF;
+END $$;
 SQL
+
+# ---------------------------------------------------------------------------
+# Truncate existing data (safe for workshop — preserves schema)
+# ---------------------------------------------------------------------------
+echo "==> Truncating existing data..."
+$PSQL -c "TRUNCATE TABLE preferences, orders, users RESTART IDENTITY CASCADE;" >/dev/null
+echo "    done."
 
 # ---------------------------------------------------------------------------
 # Seed users
@@ -100,12 +129,13 @@ jq -c '.orders[]' "${DATA_DIR}/activity.json" | while IFS= read -r row; do
   quantity=$(echo "$row" | jq -r '.quantity')
   price=$(echo "$row" | jq -r '.price')
   ordered_at=$(echo "$row" | jq -r '.ordered_at')
+  classification=$(echo "$row" | jq -r '.classification // "internal"')
 
   $PSQL -c "
-    INSERT INTO orders (user_id, item, category, quantity, price, ordered_at)
-    VALUES (${user_id}, '${item}', '${category}', ${quantity}, ${price}, '${ordered_at}');
+    INSERT INTO orders (user_id, item, category, quantity, price, ordered_at, classification)
+    VALUES (${user_id}, '${item}', '${category}', ${quantity}, ${price}, '${ordered_at}', '${classification}');
   " >/dev/null
-  echo "    order: [user ${user_id}] ${item}"
+  echo "    order: [user ${user_id}] [${classification}] ${item}"
 done
 
 # ---------------------------------------------------------------------------
@@ -116,13 +146,14 @@ jq -c '.preferences[]' "${DATA_DIR}/activity.json" | while IFS= read -r row; do
   user_id=$(echo "$row" | jq -r '.user_id')
   category=$(echo "$row" | jq -r '.category')
   value=$(echo "$row" | jq -r '.value' | sed "s/'/''/g")
+  classification=$(echo "$row" | jq -r '.classification // "internal"')
 
   $PSQL -c "
-    INSERT INTO preferences (user_id, category, value)
-    VALUES (${user_id}, '${category}', '${value}')
+    INSERT INTO preferences (user_id, category, value, classification)
+    VALUES (${user_id}, '${category}', '${value}', '${classification}')
     ON CONFLICT DO NOTHING;
   " >/dev/null
-  echo "    preference: [user ${user_id}] ${category}: ${value}"
+  echo "    preference: [user ${user_id}] [${classification}] ${category}"
 done
 
 echo ""

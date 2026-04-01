@@ -262,7 +262,21 @@ else
 fi
 
 # ==========================================
-# 15. Validation & Testing
+# 15. Audit Logging
+# ==========================================
+
+if vault audit list | grep -q "^file/"; then
+  echo "✅ File audit device already enabled."
+else
+  echo "⏳ Enabling file audit device..."
+  vault audit enable file file_path=/vault/audit/vault-audit.log \
+    log_raw=false \
+    hmac_accessor=true > /dev/null
+  echo "✅ File audit enabled at /vault/audit/vault-audit.log"
+fi
+
+# ==========================================
+# 16. Validation & Testing
 # ==========================================
 
 echo -e "\n=== Validation ==="

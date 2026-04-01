@@ -8,14 +8,36 @@ const STATUS = {
 
 const SUGGESTIONS = [
   'What did Raymon order?',
-  'What are the likings of Cojan?',
-  'Compare the tech interests of Raymon and Cojan.',
+  'What are the tech interests of all users?',
   'Which user spent the most money?',
+  'Who has the highest security clearance?',
+];
+
+// Maps source → visual metadata
+const VAULT_SOURCE_META = {
+  'static-config':         { label: 'Hardcoded',         badge: 'STATIC',          cls: 'vault-badge-static' },
+  'env-file':              { label: 'Env Variables',     badge: 'ENV',             cls: 'vault-badge-env' },
+  'vault-kv':              { label: 'Static KV',         badge: 'KV v2',           cls: 'vault-badge-kv' },
+  'vault-dynamic':         { label: 'Dynamic',           badge: 'DYNAMIC',         cls: 'vault-badge-dynamic' },
+  'vault-approle':         { label: 'AppRole / KV',      badge: 'APPROLE',         cls: 'vault-badge-approle' },
+  'vault-approle-dynamic': { label: 'AppRole / Dynamic', badge: 'APPROLE+DYN',     cls: 'vault-badge-approle-dynamic' },
+  'vault-jwt-dynamic':     { label: 'JWT / Dynamic',     badge: 'JWT+ROTATION',    cls: 'vault-badge-jwt' },
+};
+
+// Classification level config
+const CLASSIFICATIONS = [
+  { key: 'public',       label: 'Public',       color: '#34d399', minLevel: 0 },
+  { key: 'internal',     label: 'Internal',     color: '#f6c64f', minLevel: 1 },
+  { key: 'confidential', label: 'Confidential', color: '#ff8c32', minLevel: 2 },
+  { key: 'restricted',   label: 'Restricted',   color: '#f87171', minLevel: 3 },
 ];
 
 export default function App() {
   const [db, setDb] = useState('loading');
-  const [vault, setVault] = useState({ status: 'loading', source: null, path: null, username: null });
+  const [vault, setVault] = useState({
+    status: 'loading', source: null, path: null, username: null,
+    trust_level: null, allowed_classifications: [],
+  });
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [lastQuestion, setLastQuestion] = useState('');
@@ -28,7 +50,15 @@ export default function App() {
       try {
         const res = await fetch('/api/health');
         const data = await res.json();
-        setDb(res.ok && data.db === 'connected' ? 'connected' : 'error');
+        setDb(data.db === 'connected' ? 'connected' : 'error');
+        // Update vault connectivity from health probe (independent of credentials)
+        if (data.vault && !data.vault.ok) {
+          setVault((v) => ({
+            ...v,
+            status: 'error',
+            vaultHealth: data.vault.status,
+          }));
+        }
       } catch {
         setDb('error');
       }
@@ -44,12 +74,19 @@ export default function App() {
         const res = await fetch('/api/credentials');
         const data = await res.json();
         if (res.ok && data.username) {
-          setVault({ status: 'ok', source: data.source, path: data.path, username: data.username });
+          setVault({
+            status: 'ok',
+            source: data.source,
+            path: data.path,
+            username: data.username,
+            trust_level: data.trust_level ?? 0,
+            allowed_classifications: data.allowed_classifications ?? ['public'],
+          });
         } else {
-          setVault({ status: 'error', source: null, path: null, username: null });
+          setVault({ status: 'error', source: null, path: null, username: null, trust_level: null, allowed_classifications: [] });
         }
       } catch {
-        setVault({ status: 'error', source: null, path: null, username: null });
+        setVault({ status: 'error', source: null, path: null, username: null, trust_level: null, allowed_classifications: [] });
       }
     };
     check();
@@ -107,22 +144,19 @@ export default function App() {
   };
 
   const { label, tone, icon } = STATUS[db];
-
   const vaultTone = vault.status === 'ok' ? 'vault' : vault.status === 'loading' ? 'loading' : 'error';
-
-  const VAULT_SOURCE_META = {
-    'vault-kv':              { label: 'Static KV',       badge: 'KV v2',           cls: 'vault-badge-kv' },
-    'vault-dynamic':         { label: 'Dynamic',         badge: 'DYNAMIC',         cls: 'vault-badge-dynamic' },
-    'vault-approle':         { label: 'AppRole / KV',    badge: 'APPROLE',         cls: 'vault-badge-approle' },
-    'vault-approle-dynamic': { label: 'AppRole / Dynamic', badge: 'APPROLE+DYN',  cls: 'vault-badge-approle-dynamic' },
-  };
-
-  const sourceMeta = VAULT_SOURCE_META[vault.source] || { label: vault.source, badge: null, cls: '' };
-  const vaultLabel = vault.status === 'ok' ? sourceMeta.label : vault.status === 'loading' ? 'Checking' : 'Unreachable';
+  const sourceMeta = VAULT_SOURCE_META[vault.source] || { label: vault.source || 'Unknown', badge: null, cls: '' };
+  const vaultDownMsg = vault.vaultHealth
+    ? (vault.vaultHealth === 'sealed' ? 'Sealed' : 'Unreachable')
+    : 'Unreachable';
+  const vaultLabel = vault.status === 'ok' ? sourceMeta.label : vault.status === 'loading' ? 'Checking' : vaultDownMsg;
   const vaultBadge = vault.status === 'ok' && sourceMeta.badge
     ? { label: sourceMeta.badge, cls: sourceMeta.cls }
     : null;
   const hasAnswer = Boolean(answer);
+
+  const trustLevel = vault.trust_level ?? -1;
+  const allowedSet = new Set(vault.allowed_classifications || []);
 
   return (
     <div className="app">
@@ -134,6 +168,7 @@ export default function App() {
               <h1>Interrogate workshop data without leaving the trust boundary.</h1>
               <p className="hero-copy">
                 Query users, orders, and preferences while tracking the live health of PostgreSQL and Vault.
+                Data visibility changes automatically as you progress through the connector phases.
               </p>
             </div>
             <div className="status-panel" aria-label="System status">
@@ -164,6 +199,35 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Classification access panel */}
+              {vault.status !== 'loading' && (
+                <div className="trust-panel">
+                  <div className="trust-panel-title">
+                    Data access
+                    {trustLevel >= 0 && (
+                      <span className="trust-level-badge">Level {trustLevel}</span>
+                    )}
+                  </div>
+                  <div className="classification-grid">
+                    {CLASSIFICATIONS.map(({ key, label: clsLabel, color, minLevel }) => {
+                      const active = allowedSet.has(key);
+                      return (
+                        <div
+                          key={key}
+                          className={`classification-pill ${active ? 'classification-active' : 'classification-locked'}`}
+                          style={active ? { '--cls-color': color } : {}}
+                          title={active ? `${clsLabel} data is visible` : `${clsLabel} data requires trust level ${minLevel}`}
+                        >
+                          <span className="classification-dot" />
+                          <span className="classification-label">{clsLabel}</span>
+                          <span className="classification-state">{active ? 'visible' : 'locked'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -171,7 +235,12 @@ export default function App() {
             <div className="qa-header">
               <div>
                 <h2>Ask about your data</h2>
-                <p className="section-copy">Use a prompt below or write a custom question.</p>
+                <p className="section-copy">
+                  Use a prompt below or write a custom question.
+                  {trustLevel >= 0 && trustLevel < 3 && (
+                    <span className="trust-hint"> Switch to a higher-trust connector to unlock more data.</span>
+                  )}
+                </p>
               </div>
               <div className="composer-tip">Enter to send. Shift+Enter for a new line.</div>
             </div>
