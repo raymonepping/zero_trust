@@ -37,9 +37,10 @@ declare -A CONNECTOR_DESC=(
   [env]="Credentials from environment variables — Phase 0 / no Vault"
   [vault]="Static credentials from Vault KV v2 — Phase 1"
   [dynamic]="Short-lived credentials from Vault database engine — Phase 2"
+  [approle]="AppRole login → short-lived token → dynamic DB credentials — Phase 3"
 )
 
-VALID_TYPES=(wired env vault dynamic)
+VALID_TYPES=(wired env vault dynamic approle)
 
 is_valid_type() {
   local t="$1"
@@ -129,14 +130,19 @@ show_current() {
     exit 1
   fi
 
-  # Detect type from Phase comment in the file header
+  # Detect type by matching the unique source: value each connector exports
   local detected="unknown"
-  for t in "${VALID_TYPES[@]}"; do
-    if grep -qi "${t}" "${TARGET_FILE}" 2>/dev/null; then
-      detected="${t}"
-      break
-    fi
-  done
+  if grep -q '"vault-approle"\|'"'"'vault-approle'"'" "${TARGET_FILE}" 2>/dev/null; then
+    detected="approle"
+  elif grep -q '"vault-dynamic"\|'"'"'vault-dynamic'"'" "${TARGET_FILE}" 2>/dev/null; then
+    detected="dynamic"
+  elif grep -q '"vault-kv"\|'"'"'vault-kv'"'" "${TARGET_FILE}" 2>/dev/null; then
+    detected="vault"
+  elif grep -q '"env-file"\|'"'"'env-file'"'" "${TARGET_FILE}" 2>/dev/null; then
+    detected="env"
+  elif grep -q '"static-config"\|'"'"'static-config'"'" "${TARGET_FILE}" 2>/dev/null; then
+    detected="wired"
+  fi
 
   echo -e "\n${C_BOLD}Active connector:${C_RESET} ${C_YELLOW}${detected}${C_RESET}"
   echo -e "${C_DIM}${CONNECTOR_DESC[$detected]:-}${C_RESET}"
