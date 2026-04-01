@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-VERSION="2.1.0"
+VERSION="2.3.0"
 
 TARGET_FILE="./backend/connector.js"
 BASE_URL="https://raw.githubusercontent.com/raymonepping/zero_trust/refs/heads/main/data"
@@ -39,9 +39,11 @@ declare -A CONNECTOR_DESC=(
   [dynamic]="Short-lived credentials from Vault database engine — Phase 2"
   [approle]="AppRole login → scoped token → static KV credentials — Phase 3a"
   [approle-dynamic]="AppRole login → scoped token → dynamic DB credentials — Phase 3b (full zero trust)"
+  [approle-rotation]="AppRole + dynamic DB credentials + proactive rotation at 75% TTL — Phase 4"
+  [jwt-rotation]="Keycloak JWT → Vault token → dynamic DB credentials + proactive rotation — Phase 5 (most secure)"
 )
 
-VALID_TYPES=(wired env vault dynamic approle approle-dynamic)
+VALID_TYPES=(wired env vault dynamic approle approle-dynamic approle-rotation jwt-rotation)
 
 is_valid_type() {
   local t="$1"
@@ -93,6 +95,12 @@ ${C_BOLD}EXAMPLES${C_RESET}
   ${C_DIM}# Enable Vault dynamic database credentials${C_RESET}
   ${C_YELLOW}./switch_connector.sh --replace-with dynamic${C_RESET}
 
+  ${C_DIM}# AppRole + dynamic creds + proactive rotation (Phase 4)${C_RESET}
+  ${C_YELLOW}./switch_connector.sh --replace-with approle-rotation${C_RESET}
+
+  ${C_DIM}# Keycloak JWT → Vault → dynamic creds + rotation (Phase 5 — most secure)${C_RESET}
+  ${C_YELLOW}./switch_connector.sh --replace-with jwt-rotation${C_RESET}
+
 ${C_BOLD}PREREQUISITES${C_RESET}
   ${C_DIM}•${C_RESET} Docker / Podman with Compose running
   ${C_DIM}•${C_RESET} Container named ${C_CYAN}${CONTAINER_NAME}${C_RESET} must be up
@@ -131,9 +139,16 @@ show_current() {
     exit 1
   fi
 
-  # Detect type by matching the unique source: value each connector exports
+  # Detect type by matching the unique source: value each connector exports.
+  # approle-rotation shares the vault-approle-dynamic source string but also
+  # exports startAutoRenewal — check for that first to distinguish the two.
   local detected="unknown"
-  if grep -q '"vault-approle-dynamic"\|'"'"'vault-approle-dynamic'"'" "${TARGET_FILE}" 2>/dev/null; then
+  if grep -q '"vault-jwt-dynamic"\|'"'"'vault-jwt-dynamic'"'" "${TARGET_FILE}" 2>/dev/null; then
+    detected="jwt-rotation"
+  elif grep -q '"vault-approle-dynamic"\|'"'"'vault-approle-dynamic'"'" "${TARGET_FILE}" 2>/dev/null \
+     && grep -q 'startAutoRenewal' "${TARGET_FILE}" 2>/dev/null; then
+    detected="approle-rotation"
+  elif grep -q '"vault-approle-dynamic"\|'"'"'vault-approle-dynamic'"'" "${TARGET_FILE}" 2>/dev/null; then
     detected="approle-dynamic"
   elif grep -q '"vault-approle"\|'"'"'vault-approle'"'" "${TARGET_FILE}" 2>/dev/null; then
     detected="approle"

@@ -210,7 +210,71 @@ vault write auth/ldap/users/repping policies="ldap-user" > /dev/null
 echo "✅ User 'repping' mapped."
 
 # ==========================================
-# 12. Validation & Testing
+# 12. JWT Auth Method (Keycloak)
+# ==========================================
+
+KEYCLOAK_ADDR="${KEYCLOAK_ADDR:-http://keycloak:8080}"
+KEYCLOAK_REALM="${KEYCLOAK_REALM:-zero-trust}"
+KEYCLOAK_ISSUER="${KEYCLOAK_ISSUER:-http://localhost:8082/realms/${KEYCLOAK_REALM}}"
+
+if vault auth list | grep -q "^jwt/"; then
+  echo "✅ JWT auth method already enabled."
+else
+  echo "⏳ Enabling JWT auth method..."
+  vault auth enable jwt
+fi
+
+echo "⏳ Configuring JWT auth (Keycloak JWKS)..."
+vault write auth/jwt/config \
+  jwks_url="${KEYCLOAK_ADDR}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/certs" \
+  bound_issuer="${KEYCLOAK_ISSUER}" > /dev/null
+echo "✅ JWT auth configured."
+
+# ==========================================
+# 13. JWT Policy
+# ==========================================
+
+if vault policy read zero-trust-jwt-lab > /dev/null 2>&1; then
+  echo "✅ Policy 'zero-trust-jwt-lab' already exists."
+else
+  echo "⏳ Writing policy 'zero-trust-jwt-lab'..."
+  vault policy write zero-trust-jwt-lab - <<'EOF'
+# Allow reading dynamic database credentials
+path "database/creds/app-role" {
+  capabilities = ["read"]
+}
+
+# Allow looking up and renewing own token
+path "auth/token/lookup-self" {
+  capabilities = ["read"]
+}
+path "auth/token/renew-self" {
+  capabilities = ["update"]
+}
+EOF
+  echo "✅ Policy 'zero-trust-jwt-lab' created."
+fi
+
+# ==========================================
+# 14. JWT Role
+# ==========================================
+
+if vault read auth/jwt/role/zero-trust-jwt-lab > /dev/null 2>&1; then
+  echo "✅ JWT role 'zero-trust-jwt-lab' already exists."
+else
+  echo "⏳ Creating JWT role 'zero-trust-jwt-lab'..."
+  vault write auth/jwt/role/zero-trust-jwt-lab \
+    role_type="jwt" \
+    bound_audiences="backend" \
+    bound_issuer="${KEYCLOAK_ISSUER}" \
+    user_claim="email" \
+    token_policies="zero-trust-jwt-lab" \
+    token_ttl="15m" > /dev/null
+  echo "✅ JWT role created."
+fi
+
+# ==========================================
+# 15. Validation & Testing
 # ==========================================
 
 echo -e "\n=== Validation ==="
@@ -230,7 +294,26 @@ echo -e "\nTesting application credentials endpoint (localhost:3000):"
 echo "--------------------------------------------------------"
 curl -s http://localhost:3000/credentials || echo "⚠️ Failed to reach http://localhost:3000/credentials. (Is the app running?)"
 
+echo -e "\nTesting JWT auth config:"
+echo "------------------------"
+vault read auth/jwt/config | grep -E "jwks_url|bound_issuer"
+
 echo -e "\n=== Setup Complete ==="
 echo ""
 echo "To test LDAP login manually:"
 echo "  vault login -method=ldap username=repping"
+echo ""
+echo "To test JWT login manually (requires Keycloak running on localhost:8082):"
+echo "  vault write auth/jwt/login role=zero-trust-jwt-lab \\"
+echo "    jwt=\$(curl -s -X POST \"http://localhost:8082/realms/zero-trust/protocol/openid-connect/token\" \\"
+echo "      -H \"Content-Type: application/x-www-form-urlencoded\" \\"
+echo "      -d \"grant_type=password&client_id=backend&username=repping&password=password&scope=openid\" \\"
+echo "      --data-urlencode \"client_secret=\${KEYCLOAK_CLIENT_SECRET}\" | jq -r '.access_token')"
+echo ""
+echo "Required env vars for jwt-rotation connector:"
+echo "  KEYCLOAK_ADDR          (default: http://keycloak:8080)"
+echo "  KEYCLOAK_REALM         (default: zero-trust)"
+echo "  KEYCLOAK_CLIENT_ID     (default: backend)"
+echo "  KEYCLOAK_CLIENT_SECRET"
+echo "  KEYCLOAK_USERNAME"
+echo "  KEYCLOAK_PASSWORD"

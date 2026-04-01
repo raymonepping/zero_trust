@@ -64,14 +64,13 @@ services:
       start_period: 60s
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: repping/zero-trust-backend:1.0.0
     container_name: zero_trust_backend
     environment:
       NODE_ENV: development
       PORT: 3000
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      OLLAMA_ADDR: http://ollama:11434
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_TOKEN}
       VAULT_MODE: dynamic
@@ -79,7 +78,6 @@ services:
       VAULT_KV_PATH: secret/data/postgres
       VAULT_ROLE_ID: ${VAULT_ROLE_ID:-}
       VAULT_SECRET_ID: ${VAULT_SECRET_ID:-}
-      OLLAMA_ADDR: http://ollama:11434
     volumes:
       - ./backend:/app
     ports:
@@ -94,9 +92,7 @@ services:
       - net-data
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: repping/zero-trust-frontend:1.0.0
     container_name: zero_trust_frontend
     environment:
       VITE_API_URL: http://localhost:3000
@@ -138,6 +134,18 @@ services:
       - "8081:80"
     depends_on:
       - openldap
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: zero_trust_keycloak
+    command: start-dev
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8082:8080"
+    networks:
+      - net-data
 
 networks:
   net-frontend:
