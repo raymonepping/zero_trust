@@ -87,6 +87,18 @@ async function performRotation(credentials, reason = "unknown") {
   }
 
   activePool = newPool;
+
+  if (credentials.previousLeaseId) {
+    try {
+      await connector.revokeLease(credentials.previousLeaseId);
+    } catch (err) {
+      console.error(
+        "[pool-manager] Old lease revoke failed:",
+        err.message
+      );
+    }
+  }
+    
   currentUser = credentials.user;
   rotationCount++;
 
@@ -155,6 +167,10 @@ async function recoverFromAuthFailure() {
 // ---------------------------------------------------------------------------
 
 async function query(sql, params) {
+  if (shuttingDown) {
+    throw new Error("Server is shutting down");
+  }
+
   if (!activePool) {
     throw new Error("Pool not initialized");
   }

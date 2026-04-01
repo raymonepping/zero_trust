@@ -199,6 +199,29 @@ app.get("/credentials", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Lease health — current lease status and rotation state
+// ---------------------------------------------------------------------------
+app.get("/health/lease", (_req, res) => {
+  try {
+    const connector = require("./connector");
+    const status    = poolManager.getStatus();
+    const lease     = typeof connector.getLeaseInfo === "function"
+      ? connector.getLeaseInfo()
+      : { status: "not-supported", leaseId: null, ttl: null };
+
+    res.json({
+      lease_id:             lease.leaseId   || null,
+      ttl:                  lease.ttl        || null,
+      remaining_sec:        lease.remainingSec ?? null,
+      status:               lease.status     || "unknown",
+      rotation_in_progress: status.rotationActive,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Ask — context filtered by trust level
 // ---------------------------------------------------------------------------
 app.post("/ask", async (req, res) => {

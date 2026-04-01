@@ -190,6 +190,7 @@ async function fetchCredentials() {
   const leaseDuration = json.lease_duration;
   const now = Date.now();
 
+  const previousLeaseId = currentLeaseId;
   currentLeaseId = leaseId;
   credentialExpiresAt = now + leaseDuration * 1000;
 
@@ -205,6 +206,7 @@ async function fetchCredentials() {
     leaseId,
     issuedAt: now,
     expiresAt: credentialExpiresAt,
+    previousLeaseId,
   };
 
   console.log(
@@ -328,6 +330,29 @@ async function performRenewal(retryIndex) {
 // ---------------------------------------------------------------------------
 // Public lifecycle
 // ---------------------------------------------------------------------------
+async function revokeLease(leaseId) {
+  if (!leaseId) return;
+
+  const token = await getVaultToken();
+
+  const res = await fetch(`${VAULT_ADDR}/v1/sys/leases/revoke`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Vault-Token": token,
+    },
+    body: JSON.stringify({
+      lease_id: leaseId,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Lease revoke failed ${res.status}: ${text}`);
+  }
+
+  console.log(`[connector] Lease revoked | ${leaseId}`);
+}
 
 async function startAutoRenewal() {
   running = true;
@@ -386,4 +411,5 @@ module.exports = {
   stop,
   onRotation,
   getLeaseInfo,
+  revokeLease,
 };
