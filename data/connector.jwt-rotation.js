@@ -10,6 +10,8 @@
 
 "use strict";
 
+const log         = require("./logger");
+
 const KEYCLOAK_ADDR = process.env.KEYCLOAK_ADDR || "http://keycloak:8080";
 const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM || "zero-trust";
 const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || "backend";
@@ -68,7 +70,9 @@ function emitRotation(credentials) {
     try {
       listener(credentials);
     } catch (err) {
-      console.error("[connector] Rotation listener error:", err.message);
+      log.error("Rotation listener error", {
+        error: err.message,
+      });
     }
   }
 }
@@ -108,9 +112,9 @@ async function fetchKeycloakJwt() {
     throw new Error("Keycloak did not return an access_token");
   }
 
-  console.log(
-    `[connector] Keycloak JWT obtained | expires_in: ${json.expires_in}s`
-  );
+  log.info("Keycloak JWT obtained", {
+    expires_in: json.expires_in,
+  });
 
   return json.access_token;
 }
@@ -126,6 +130,7 @@ async function getVaultToken() {
   const safetyMargin = Math.max(30_000, Math.floor(remaining * 0.25));
 
   if (cachedVaultToken && vaultTokenExpires > now + safetyMargin) {
+    log.debug("Using cached Vault token");
     return cachedVaultToken;
   }
 
@@ -159,7 +164,10 @@ async function getVaultToken() {
   cachedVaultToken = token;
   vaultTokenExpires = now + ttl * 1000;
 
-  console.log(`[connector] Vault JWT login OK | token TTL: ${ttl}s`);
+  log.info("Vault JWT login OK", {
+    ttl,
+    role: VAULT_JWT_ROLE,
+  });
 
   return token;
 }
@@ -210,9 +218,12 @@ async function fetchCredentials() {
     previousLeaseId,
   };
 
-  console.log(
-    `[connector] Dynamic credentials issued | user: ${username} | TTL: ${leaseDuration}s | lease: ${leaseId}`
-  );
+  log.info("Dynamic credentials issued", {
+    user: username,
+    ttl: leaseDuration,
+    lease_id: leaseId,
+    role: VAULT_DB_ROLE,
+  });
 
   return currentCredentials;
 }
@@ -229,9 +240,11 @@ async function refreshCredentials(reason = "unknown") {
   rotationInProgress = (async () => {
     const creds = await fetchCredentials();
 
-    console.log(
-      `[connector] Credential refresh complete | reason: ${reason} | user: ${creds.user}`
-    );
+    log.info("Credential refresh complete", {
+      reason,
+      user: creds.user,
+      lease_id: creds.leaseId,
+    });
 
     emitRotation(creds);
 
@@ -268,7 +281,9 @@ async function getCredentials() {
 // ---------------------------------------------------------------------------
 
 async function forceRotation(reason) {
-  console.log(`[connector] Forced rotation triggered | reason: ${reason}`);
+  log.warn("Forced rotation triggered", {
+    reason,
+  });
 
   cachedVaultToken = null;
   vaultTokenExpires = 0;
@@ -288,10 +303,11 @@ function scheduleRenewal(ttlSeconds) {
 
   const delayMs = Math.floor(ttlSeconds * RENEWAL_THRESHOLD * 1000);
 
-  console.log(
-    `[connector] Next renewal in ${Math.round(delayMs / 1000)}s ` +
-      `(${Math.round(RENEWAL_THRESHOLD * 100)}% of ${ttlSeconds}s TTL)`
-  );
+  log.info("Next renewal scheduled", {
+    delay_sec: Math.round(delayMs / 1000),
+    threshold_pct: Math.round(RENEWAL_THRESHOLD * 100),
+    ttl: ttlSeconds,
+  });
 
   renewalTimer = setTimeout(() => performRenewal(0), delayMs);
 
@@ -302,22 +318,25 @@ function scheduleRenewal(ttlSeconds) {
 
 async function performRenewal(retryIndex) {
   try {
-    console.log("[connector] Proactive renewal starting...");
+    log.info("Proactive renewal starting");
 
     await refreshCredentials("proactive");
 
     lastRenewalError = null;
-    console.log("[connector] Proactive renewal complete");
+    log.info("Proactive renewal complete");
   } catch (err) {
     lastRenewalError = err.message;
-    console.error(`[connector] Proactive renewal failed: ${err.message}`);
+    log.error("Proactive renewal failed", {
+      error: err.message,
+    });
 
     const delay =
       RETRY_DELAYS[Math.min(retryIndex, RETRY_DELAYS.length - 1)];
 
-    console.log(
-      `[connector] Retrying in ${delay}s (attempt ${retryIndex + 1})`
-    );
+    log.warn("Renewal retry scheduled", {
+      delay,
+      attempt: retryIndex + 1,
+    });
 
     renewalTimer = setTimeout(
       () => performRenewal(retryIndex + 1),
@@ -354,7 +373,37 @@ async function revokeLease(leaseId) {
     throw new Error(`Lease revoke failed ${res.status}: ${text}`);
   }
 
-  console.log(`[connector] Lease revoked | ${leaseId}`);
+  log.info("Lease revoked", {
+    lease_id: leaseId,
+  });
+}
+
+async function lookupLease(leaseId) {
+  if (!leaseId) return { exists: false, status: "missing", ttl: null };
+
+  const token = await getVaultToken();
+
+  const res = await fetch(`${VAULT_ADDR}/v1/sys/leases/lookup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Vault-Token": token,
+    },
+    body: JSON.stringify({ lease_id: leaseId }),
+  });
+
+  if (res.status === 400 || res.status === 404) {
+    return { exists: false, status: "revoked", ttl: null };
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Lease lookup failed ${res.status}: ${text}`);
+  }
+
+  const json = await res.json();
+
+  return { exists: true, status: "active", ttl: json.data?.ttl ?? null };
 }
 
 async function startAutoRenewal() {
@@ -362,7 +411,7 @@ async function startAutoRenewal() {
 
   const creds = await refreshCredentials("initial");
 
-  console.log("[connector] Auto-renewal started");
+  log.info("Auto-renewal started");
 
   return creds;
 }
@@ -375,7 +424,7 @@ function stop() {
     renewalTimer = null;
   }
 
-  console.log("[connector] Auto-renewal stopped");
+  log.info("Auto-renewal stopped");
 }
 
 // ---------------------------------------------------------------------------
@@ -415,4 +464,5 @@ module.exports = {
   onRotation,
   getLeaseInfo,
   revokeLease,
+  lookupLease,
 };

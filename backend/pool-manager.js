@@ -2,26 +2,37 @@
 
 const { Pool } = require("pg");
 const connector = require("./connector");
+const log       = require("./logger");
 
-// PostgreSQL auth / connection errors that indicate credentials are invalid
 const AUTH_ERROR_CODES = new Set(["28P01", "28000", "08006"]);
 
 const POOL_CONFIG = {
-  max: 10,
-  idleTimeoutMillis: 30_000,
+  max:                    10,
+  idleTimeoutMillis:      30_000,
   connectionTimeoutMillis: 5_000,
 };
 
 // ---------------------------------------------------------------------------
-// State
+// State: per-role pools
+// Map<vaultRole, { pool, user, rotationCount, rotationInProgress, recoveryInProgress }>
 // ---------------------------------------------------------------------------
 
-let activePool = null;
-let currentUser = null;
-let rotationCount = 0;
+const pools       = new Map();
+let shuttingDown  = false;
+let initialized   = false;
 
-let rotationInProgress = null;
-let shuttingDown = false;
+function getPoolState(vaultRole) {
+  if (!pools.has(vaultRole)) {
+    pools.set(vaultRole, {
+      pool:               null,
+      user:               null,
+      rotationCount:      0,
+      rotationInProgress: null,
+      recoveryInProgress: null,
+    });
+  }
+  return pools.get(vaultRole);
+}
 
 // ---------------------------------------------------------------------------
 // Credential source classification
@@ -36,181 +47,232 @@ const VAULT_SOURCED = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
+// Backward-compatibility shims for older connectors (phases 0-4)
+// that predate the role-scoped interface.
+//
+// Old connectors lack: MODE, resolveVaultRole, getKnownRoles, lookupLease
+// Old startAutoRenewal() returns a single credentials object (not a Map)
+// Old emitRotation fires listeners with (credentials) — one argument
+// ---------------------------------------------------------------------------
+
+const DEFAULT_ROLE = "app-role";
+
+// Resolve which pool to use for a given userContext.
+// Falls back to DEFAULT_ROLE for old connectors without resolveVaultRole.
+function resolveRole(userContext) {
+  if (typeof connector.resolveVaultRole === "function") {
+    return connector.resolveVaultRole(userContext?.role);
+  }
+  // Old connector: single pool, ignore role
+  return pools.size > 0 ? [...pools.keys()][0] : DEFAULT_ROLE;
+}
+
+// Normalise startAutoRenewal() return value to Map<vaultRole, credentials>
+function normalizeCredsMap(result) {
+  if (result instanceof Map) return result;
+  // Old connector returns a single credentials object
+  const role = result?.vaultRole || DEFAULT_ROLE;
+  return new Map([[role, result]]);
+}
+
+// Normalise getLeaseInfo() to { [vaultRole]: leaseInfo } for old connectors
+// that return a flat single-lease object { leaseId, user, ttl, ... }
+function normalizeLeaseInfo(result) {
+  if (!result) return {};
+  // New format: keys are vault roles, values are lease objects with vaultRole field
+  const firstVal = Object.values(result)[0];
+  if (firstVal && typeof firstVal === "object" && "vaultRole" in firstVal) {
+    return result; // already per-role format
+  }
+  // Old flat format: wrap in a role-keyed object
+  const role = result.vaultRole || DEFAULT_ROLE;
+  return { [role]: { ...result, vaultRole: role } };
+}
+
+// ---------------------------------------------------------------------------
 // Pool builder
 // ---------------------------------------------------------------------------
 
 function buildPool(credentials) {
   if (VAULT_SOURCED.has(credentials.source)) {
     return new Pool({
-      host: credentials.host,
-      port: credentials.port,
+      host:     credentials.host,
+      port:     credentials.port,
       database: credentials.database,
-      user: credentials.user,
+      user:     credentials.user,
+      password: credentials.password,
+      ...POOL_CONFIG,
+    });
+  }
+
+  // Static mode: use individual fields (DB_USER/DB_PASSWORD from connector)
+  // Fall through to DATABASE_URL only if individual fields are absent
+  if (credentials.host && credentials.user && credentials.password) {
+    return new Pool({
+      host:     credentials.host,
+      port:     credentials.port,
+      database: credentials.database,
+      user:     credentials.user,
       password: credentials.password,
       ...POOL_CONFIG,
     });
   }
 
   const connectionString = process.env.DATABASE_URL;
-
-  if (!connectionString) {
-    throw new Error("DATABASE_URL not set");
-  }
-
-  return new Pool({
-    connectionString,
-    ...POOL_CONFIG,
-  });
+  if (!connectionString) throw new Error("DATABASE_URL not set");
+  return new Pool({ connectionString, ...POOL_CONFIG });
 }
-
-// ---------------------------------------------------------------------------
-// Validate new pool before swap
-// ---------------------------------------------------------------------------
 
 async function validatePool(pool) {
   await pool.query("SELECT 1");
 }
 
 // ---------------------------------------------------------------------------
-// Internal atomic rotation
+// Internal atomic rotation (per role)
 // ---------------------------------------------------------------------------
 
-async function performRotation(credentials, reason = "unknown") {
-  const oldPool = activePool;
+async function performRotation(vaultRole, credentials, reason) {
+  const state   = getPoolState(vaultRole);
+  const oldPool = state.pool;
   const newPool = buildPool(credentials);
 
   try {
     await validatePool(newPool);
   } catch (err) {
     await newPool.end().catch(() => {});
-    throw new Error(`Pool validation failed: ${err.message}`);
+    throw new Error(`Pool validation failed for "${vaultRole}": ${err.message}`);
   }
 
-  activePool = newPool;
+  state.pool = newPool;
+  state.user = credentials.user;
+  state.rotationCount++;
 
+  log.info("Pool rotated", {
+    role:           vaultRole,
+    reason,
+    user:           credentials.user,
+    rotation_count: state.rotationCount,
+    source:         credentials.source,
+  });
+
+  // Revoke previous lease after swap
   if (credentials.previousLeaseId) {
     try {
       await connector.revokeLease(credentials.previousLeaseId);
     } catch (err) {
-      console.error(
-        "[pool-manager] Old lease revoke failed:",
-        err.message
-      );
+      log.error("Old lease revoke failed", {
+        role:     vaultRole,
+        lease_id: credentials.previousLeaseId,
+        error:    err.message,
+      });
     }
   }
-    
-  currentUser = credentials.user;
-  rotationCount++;
 
-  console.log(
-    `[pool-manager] Pool rotated | reason: ${reason} | user: ${credentials.user} | rotation #${rotationCount}`
-  );
-
+  // Drain old pool
   if (oldPool && oldPool !== newPool) {
     try {
       await oldPool.end();
     } catch (err) {
-      console.error("[pool-manager] Old pool drain failed:", err.message);
+      log.warn("Old pool drain failed", { role: vaultRole, error: err.message });
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Rotation lock wrapper
+// Rotation lock wrapper (per role)
 // ---------------------------------------------------------------------------
 
-async function rotatePool(credentials, reason = "unknown") {
-  if (rotationInProgress) {
-    await rotationInProgress;
+async function rotatePool(vaultRole, credentials, reason) {
+  const state = getPoolState(vaultRole);
+
+  if (state.rotationInProgress) {
+    await state.rotationInProgress;
     return;
   }
 
-  rotationInProgress = performRotation(credentials, reason);
+  state.rotationInProgress = performRotation(vaultRole, credentials, reason);
 
   try {
-    await rotationInProgress;
+    await state.rotationInProgress;
   } finally {
-    rotationInProgress = null;
+    state.rotationInProgress = null;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Proactive rotation callback
+// Proactive rotation callback (registered with connector.onRotation)
 // ---------------------------------------------------------------------------
 
-async function handleProactiveRotation(credentials) {
+async function handleProactiveRotation(vaultRole, credentials) {
+  // Old connectors call emitRotation(credentials) with one arg — normalise
+  if (credentials === undefined && vaultRole && typeof vaultRole === "object") {
+    credentials = vaultRole;
+    vaultRole   = credentials.vaultRole || resolveRole(null);
+  }
   try {
-    await rotatePool(credentials, "proactive");
+    await rotatePool(vaultRole, credentials, "proactive");
   } catch (err) {
-    console.error("[pool-manager] Proactive rotation failed:", err.message);
+    log.error("Proactive rotation failed", { role: vaultRole, error: err.message });
   }
 }
 
 // ---------------------------------------------------------------------------
-// Reactive credential recovery
+// Reactive credential recovery (per role)
 // ---------------------------------------------------------------------------
 
-let recoveryInProgress = null;
+async function recoverFromAuthFailure(vaultRole, userContext) {
+  const state = getPoolState(vaultRole);
 
-async function recoverFromAuthFailure() {
-  if (recoveryInProgress) {
-    return recoveryInProgress;
+  if (state.recoveryInProgress) {
+    return state.recoveryInProgress;
   }
 
-  recoveryInProgress = (async () => {
-    let freshCreds;
-
-    if (typeof connector.forceRotation === "function") {
-      freshCreds = await connector.forceRotation("auth-error");
-    } else {
-      freshCreds = await connector.getCredentials();
-    }
-
-    await rotatePool(freshCreds, "reactive");
+  state.recoveryInProgress = (async () => {
+    const freshCreds = await connector.forceRotation("auth-error", userContext);
+    await rotatePool(vaultRole, freshCreds, "reactive");
   })();
 
   try {
-    return await recoveryInProgress;
+    return await state.recoveryInProgress;
   } finally {
-    recoveryInProgress = null;
+    state.recoveryInProgress = null;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Query wrapper
+// Query wrapper (role-aware)
 // ---------------------------------------------------------------------------
 
-async function query(sql, params) {
-  if (shuttingDown) {
-    throw new Error("Server is shutting down");
-  }
+async function query(sql, params, userContext) {
+  if (shuttingDown) throw new Error("Server is shutting down");
+  if (!initialized) throw new Error("Pool not initialized");
 
-  if (!activePool) {
-    throw new Error("Pool not initialized");
+  const vaultRole = resolveRole(userContext);
+  let state       = getPoolState(vaultRole);
+
+  // Lazy pool creation for roles not pre-warmed at startup
+  if (!state.pool) {
+    log.info("Lazy pool init", { role: vaultRole });
+    const creds = await connector.getCredentials(userContext);
+    await rotatePool(vaultRole, creds, "lazy-init");
+    state = getPoolState(vaultRole);
   }
 
   try {
-    return await activePool.query(sql, params);
+    return await state.pool.query(sql, params);
   } catch (err) {
-    if (!AUTH_ERROR_CODES.has(err.code)) {
-      throw err;
-    }
+    if (!AUTH_ERROR_CODES.has(err.code)) throw err;
 
-    console.warn(
-      `[pool-manager] Auth error detected (${err.code}), attempting recovery`
-    );
+    log.warn("Auth error detected, attempting recovery", { role: vaultRole, code: err.code });
 
     try {
-      await recoverFromAuthFailure();
+      await recoverFromAuthFailure(vaultRole, userContext);
     } catch (rotationErr) {
-      console.error(
-        "[pool-manager] Reactive rotation failed:",
-        rotationErr.message
-      );
+      log.error("Reactive rotation failed", { role: vaultRole, error: rotationErr.message });
       throw err;
     }
 
-    return activePool.query(sql, params);
+    return getPoolState(vaultRole).pool.query(sql, params);
   }
 }
 
@@ -219,22 +281,26 @@ async function query(sql, params) {
 // ---------------------------------------------------------------------------
 
 async function initialize() {
-  let credentials;
+  if (initialized) return;
 
-  if (typeof connector.startAutoRenewal === "function") {
-    connector.onRotation(handleProactiveRotation);
-    credentials = await connector.startAutoRenewal();
+  // startAutoRenewal() fetches credentials and calls emitRotation() internally.
+  // Register the proactive rotation listener AFTER it returns so the initial
+  // credential fetch does not trigger a pool rotation before we build the pool.
+  const credsMap = normalizeCredsMap(await connector.startAutoRenewal());
 
-    console.log("[pool-manager] Auto-renewal mode active");
-  } else {
-    credentials = await connector.getCredentials();
-
-    console.log("[pool-manager] Simple credential mode");
+  for (const [vaultRole, creds] of credsMap) {
+    try {
+      await rotatePool(vaultRole, creds, "initial");
+    } catch (err) {
+      log.error("Failed to create pool", { role: vaultRole, error: err.message });
+    }
   }
 
-  await rotatePool(credentials, "initial");
+  // Now safe to register — all future proactive renewals will rotate the pool.
+  connector.onRotation(handleProactiveRotation);
 
-  console.log("[pool-manager] Initialized");
+  initialized = true;
+  log.info("Pool manager initialized", { pools: pools.size });
 }
 
 // ---------------------------------------------------------------------------
@@ -243,26 +309,29 @@ async function initialize() {
 
 async function shutdown() {
   shuttingDown = true;
+  connector.stop();
 
-  if (typeof connector.stop === "function") {
-    connector.stop();
-  }
-
-  if (rotationInProgress) {
-    await rotationInProgress.catch(() => {});
-  }
-
-  if (activePool) {
-    try {
-      await activePool.end();
-    } catch (err) {
-      console.error("[pool-manager] Shutdown drain failed:", err.message);
+  // Wait for in-progress rotations
+  for (const [, state] of pools) {
+    if (state.rotationInProgress) {
+      await state.rotationInProgress.catch(() => {});
     }
-
-    activePool = null;
   }
 
-  console.log("[pool-manager] Shutdown complete");
+  // Drain all pools in parallel
+  await Promise.all(
+    [...pools.entries()].map(([vaultRole, state]) =>
+      state.pool
+        ? state.pool.end().catch((err) =>
+            log.warn("Shutdown drain failed", { role: vaultRole, error: err.message })
+          )
+        : Promise.resolve()
+    )
+  );
+
+  pools.clear();
+  initialized = false;
+  log.info("Pool manager shutdown complete");
 }
 
 // ---------------------------------------------------------------------------
@@ -270,31 +339,52 @@ async function shutdown() {
 // ---------------------------------------------------------------------------
 
 function getStatus() {
-  const leaseInfo =
-    typeof connector.getLeaseInfo === "function"
-      ? connector.getLeaseInfo()
-      : { status: "not-supported" };
+  const leases = normalizeLeaseInfo(
+    typeof connector.getLeaseInfo === "function" ? connector.getLeaseInfo() : null
+  );
+  const poolStatus      = {};
+  let totalRotations    = 0;
+  let anyRotationActive = false;
+
+  for (const [vaultRole, state] of pools) {
+    totalRotations += state.rotationCount;
+    if (state.rotationInProgress) anyRotationActive = true;
+
+    poolStatus[vaultRole] = {
+      user:          state.user,
+      rotationCount: state.rotationCount,
+      ...(state.pool ? {
+        totalCount:   state.pool.totalCount,
+        idleCount:    state.pool.idleCount,
+        waitingCount: state.pool.waitingCount,
+      } : { totalCount: 0, idleCount: 0, waitingCount: 0 }),
+    };
+  }
 
   return {
-    currentUser,
-    rotationCount,
-    rotationActive: !!rotationInProgress,
+    mode:           connector.MODE,
+    initialized,
     shuttingDown,
-    pool: activePool
-      ? {
-          totalCount: activePool.totalCount,
-          idleCount: activePool.idleCount,
-          waitingCount: activePool.waitingCount,
-        }
-      : null,
-    lease: leaseInfo,
+    rotationCount:  totalRotations,
+    rotationActive: anyRotationActive,
+    pools:          poolStatus,
+    leases,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Exports
+// ---------------------------------------------------------------------------
 
 module.exports = {
   initialize,
   shutdown,
   query,
   getStatus,
-  rotatePool,
+
+  // Exposed for manual rotation endpoint
+  rotatePool: async function (credentials, reason) {
+    const vaultRole = credentials.vaultRole || resolveRole(null);
+    await rotatePool(vaultRole, credentials, reason);
+  },
 };

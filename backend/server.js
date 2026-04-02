@@ -1,11 +1,18 @@
-const express     = require("express");
-const poolManager = require("./pool-manager");
+"use strict";
 
-const app  = express();
-const PORT = process.env.PORT || 3000;
+const express     = require("express");
+const morgan      = require("morgan");
+const poolManager = require("./pool-manager");
+const connector   = require("./connector");
+const log         = require("./logger");
+const { authenticateOptional } = require("./auth");
+
+const app         = express();
+const PORT        = process.env.PORT || 3000;
 const OLLAMA_ADDR = process.env.OLLAMA_ADDR || "http://ollama:11434";
 
 app.use(express.json());
+app.use(morgan("combined", { stream: log.stream }));
 
 // ---------------------------------------------------------------------------
 // Trust level — derived from the active connector's source field
@@ -14,29 +21,54 @@ app.use(express.json());
 // Level 1 (internal)                — vault-kv, vault-dynamic
 // Level 2 (confidential)            — vault-approle, vault-approle-dynamic
 // Level 3 (restricted — full trust) — vault-jwt-dynamic
+//
+// This is orthogonal to user role scoping:
+//   - Trust level controls which data CLASSIFICATIONS are queryable (SQL WHERE)
+//   - User role controls which Vault DB ROLE (and SQL GRANTs) the credential carries
+//   - Both layers enforce independently (defense in depth)
 // ---------------------------------------------------------------------------
 
 const TRUST_LEVELS = {
-  "static-config":        0,
-  "env-file":             0,
-  "vault-kv":             1,
-  "vault-dynamic":        1,
-  "vault-approle":        2,
+  "static-config":         0,
+  "env-file":              0,
+  "vault-kv":              1,
+  "vault-dynamic":         1,
+  "vault-approle":         2,
   "vault-approle-dynamic": 2,
-  "vault-jwt-dynamic":    3,
+  "vault-jwt-dynamic":     3,
 };
 
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted"];
+
+const RENEWAL_THRESHOLD = 0.75;
+
+// ---------------------------------------------------------------------------
+// Backward-compatibility helpers — tolerate old connectors that lack
+// MODE, resolveVaultRole, getKnownRoles, and lookupLease
+// ---------------------------------------------------------------------------
+
+const connectorMode        = connector.MODE || "legacy";
+const connectorResolveRole = typeof connector.resolveVaultRole === "function"
+  ? (role) => connector.resolveVaultRole(role)
+  : () => "app-role";
+const connectorKnownRoles  = typeof connector.getKnownRoles === "function"
+  ? () => connector.getKnownRoles()
+  : () => ["app-role"];
+const connectorLookupLease = typeof connector.lookupLease === "function"
+  ? (id) => connector.lookupLease(id)
+  : async () => ({ exists: null, status: "not-supported", ttl: null });
+const connectorGetLeaseInfo = typeof connector.getLeaseInfo === "function"
+  ? () => connector.getLeaseInfo()
+  : () => null;
 
 function getAllowedClassifications(source) {
   const level = TRUST_LEVELS[source] ?? 0;
   return CLASSIFICATIONS.slice(0, level + 1);
 }
 
-async function getActiveSource() {
+async function getActiveSource(userContext) {
   try {
-    const connector = require("./connector");
-    const creds = await connector.getCredentials();
+    const creds = await connector.getCredentials(userContext);
     return creds.source || "static-config";
   } catch {
     return "static-config";
@@ -55,29 +87,26 @@ const VAULT_ADDR = process.env.VAULT_ADDR || "http://vault:8200";
 
 async function probeVault() {
   try {
-    // Vault /v1/sys/health returns 200 (active), 429 (standby), 472/473 (DR),
-    // 501 (not initialised), 503 (sealed) — all non-2xx but still reachable.
-    // We pass ?standbyok=true so standby nodes also return 200.
     const res = await fetch(
       `${VAULT_ADDR}/v1/sys/health?standbyok=true&perfstandbyok=true`,
       { signal: AbortSignal.timeout(3000) }
     );
-    const json = await res.json().catch(() => ({}));
+    const json      = await res.json().catch(() => ({}));
     const reachable = res.status !== 503 && res.status !== 501;
     if (!reachable) {
       const msg = json.errors?.[0] || (res.status === 503 ? "sealed" : "not initialised");
-      console.error(`[server] Vault health degraded: ${msg} (HTTP ${res.status})`);
+      log.warn("Vault health degraded", { status: res.status, msg });
       return { ok: false, status: msg, sealed: res.status === 503, version: json.version || null };
     }
     return { ok: true, status: "active", sealed: false, version: json.version || null };
   } catch (err) {
-    console.error(`[server] Vault health error: ${err.message}`);
+    log.error("Vault health error", { error: err.message });
     return { ok: false, status: err.message, sealed: null, version: null };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Health
+// Health — no auth required
 // ---------------------------------------------------------------------------
 app.get("/", async (_req, res) => {
   try {
@@ -98,16 +127,17 @@ app.get("/health", async (_req, res) => {
   const vaultOk = vaultResult.status === "fulfilled" && vaultResult.value.ok;
   const vault   = vaultResult.status === "fulfilled" ? vaultResult.value : { ok: false, status: "probe failed" };
 
-  const overall = dbOk && vaultOk ? "ok" : "degraded";
-  const httpStatus = dbOk ? 200 : 503;  // 503 only if DB is down (app non-functional)
+  const overall    = dbOk && vaultOk ? "ok" : "degraded";
+  const httpStatus = dbOk ? 200 : 503;
 
   if (!vaultOk) {
-    console.error(`[server] Health check: Vault degraded — ${vault.status}`);
+    log.warn("Health check: Vault degraded", { vault: vault.status });
   }
 
   res.status(httpStatus).json({
-    status:  overall,
-    db:      dbOk    ? "connected" : dbResult.reason?.message || "error",
+    status: overall,
+    mode:   connectorMode,
+    db:     dbOk ? "connected" : dbResult.reason?.message || "error",
     vault: {
       status:  vault.status,
       ok:      vault.ok,
@@ -118,12 +148,15 @@ app.get("/health", async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Data APIs — filtered by trust level
+// Data APIs — authenticateOptional keeps the frontend working without a
+// Bearer token while enabling role-scoped credentials when one is present
 // ---------------------------------------------------------------------------
-app.get("/users", async (_req, res) => {
+app.get("/users", authenticateOptional, async (req, res) => {
   try {
     const { rows } = await poolManager.query(
       "SELECT id, first_name, last_name, email, city, country, joined FROM users ORDER BY id",
+      [],
+      req.userContext,
     );
     res.json(rows);
   } catch (err) {
@@ -131,35 +164,39 @@ app.get("/users", async (_req, res) => {
   }
 });
 
-app.get("/orders", async (_req, res) => {
+app.get("/orders", authenticateOptional, async (req, res) => {
   try {
-    const source  = await getActiveSource();
+    const source  = await getActiveSource(req.userContext);
     const allowed = getAllowedClassifications(source);
-    const { rows } = await poolManager.query(`
-      SELECT o.id, u.first_name, u.last_name, o.item, o.category,
-             o.quantity, o.price, o.ordered_at, o.classification
-      FROM orders o
-      JOIN users u ON u.id = o.user_id
-      WHERE o.classification IN (${sqlInList(allowed)})
-      ORDER BY o.ordered_at DESC
-    `);
+    const { rows } = await poolManager.query(
+      `SELECT o.id, u.first_name, u.last_name, o.item, o.category,
+              o.quantity, o.price, o.ordered_at, o.classification
+       FROM orders o
+       JOIN users u ON u.id = o.user_id
+       WHERE o.classification IN (${sqlInList(allowed)})
+       ORDER BY o.ordered_at DESC`,
+      [],
+      req.userContext,
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get("/preferences", async (_req, res) => {
+app.get("/preferences", authenticateOptional, async (req, res) => {
   try {
-    const source  = await getActiveSource();
+    const source  = await getActiveSource(req.userContext);
     const allowed = getAllowedClassifications(source);
-    const { rows } = await poolManager.query(`
-      SELECT p.id, u.first_name, u.last_name, p.category, p.value, p.classification
-      FROM preferences p
-      JOIN users u ON u.id = p.user_id
-      WHERE p.classification IN (${sqlInList(allowed)})
-      ORDER BY u.id, p.category
-    `);
+    const { rows } = await poolManager.query(
+      `SELECT p.id, u.first_name, u.last_name, p.category, p.value, p.classification
+       FROM preferences p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.classification IN (${sqlInList(allowed)})
+       ORDER BY u.id, p.category`,
+      [],
+      req.userContext,
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -167,30 +204,32 @@ app.get("/preferences", async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Credentials — includes trust level and classification access
+// Credentials — includes trust level, role scoping, and pool status
 // ---------------------------------------------------------------------------
-app.get("/credentials", async (_req, res) => {
+app.get("/credentials", authenticateOptional, async (req, res) => {
   try {
-    const connector = require("./connector");
-    const creds     = await connector.getCredentials();
-    const status    = poolManager.getStatus();
-    const allowed   = getAllowedClassifications(creds.source);
-    const level     = TRUST_LEVELS[creds.source] ?? 0;
+    const creds   = await connector.getCredentials(req.userContext);
+    const status  = poolManager.getStatus();
+    const allowed = getAllowedClassifications(creds.source);
+    const level   = TRUST_LEVELS[creds.source] ?? 0;
 
     res.json({
       source:                  creds.source,
-      path:                    creds.path    || null,
+      path:                    creds.path      || null,
       host:                    creds.host,
       port:                    creds.port,
       database:                creds.database,
       username:                creds.user,
       password:                "***",
-      ttl:                     creds.ttl     || null,
-      leaseId:                 creds.leaseId || null,
+      ttl:                     creds.ttl       || null,
+      leaseId:                 creds.leaseId   || null,
+      vaultRole:               creds.vaultRole || null,
+      issuedFor:               creds.issuedFor || null,
       trust_level:             level,
       allowed_classifications: allowed,
-      pool:                    status.pool,
-      lease:                   status.lease,
+      requestedBy:             req.userContext || null,
+      pools:                   status.pools,
+      leases:                  status.leases,
       rotations:               status.rotationCount,
     });
   } catch (err) {
@@ -199,96 +238,108 @@ app.get("/credentials", async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Lease health — current lease status and rotation state
+// Lease health — per-role lease status with live Vault truth
 // ---------------------------------------------------------------------------
 app.get("/health/lease", async (_req, res) => {
   try {
-    const connector = require("./connector");
     const poolStatus = poolManager.getStatus();
-    const lease      = typeof connector.getLeaseInfo === "function"
-      ? connector.getLeaseInfo()
-      : null;
+    const leases     = connectorGetLeaseInfo();
 
-    if (!lease) {
-      return res.json({ status: "no-credentials", lease_id: null, ttl: null, remaining_sec: null, rotation_in_progress: false });
+    if (!leases || Object.keys(leases).length === 0) {
+      return res.json({ status: "no-credentials", roles: {}, rotation_active: false });
     }
 
-    // Live Vault truth — non-blocking: if lookup fails, degrade gracefully
-    let vaultStatus = "unknown";
-    try {
-      const lookup = await connector.lookupLease(lease.leaseId);
-      vaultStatus = lookup.status;
+    const roles = {};
 
-      // Auto-recover if Vault reports the lease is already gone
-      if (lookup.status === "revoked" && !poolStatus.rotationActive) {
-        console.warn("[server] /health/lease: Vault reports lease revoked — triggering recovery");
-        connector.forceRotation("vault-revoked").catch((err) =>
-          console.error("[server] Auto-recovery after revoke failed:", err.message)
-        );
+    for (const [vaultRole, lease] of Object.entries(leases)) {
+      const renewalWindowSec = (lease.ttl || 0) * (1 - RENEWAL_THRESHOLD);
+      const poolState        = poolStatus.pools?.[vaultRole];
+      const rotating         = poolState?.rotationCount !== undefined && poolStatus.rotationActive;
+
+      let localStatus;
+      if (rotating) {
+        localStatus = "rotating";
+      } else if (lease.remainingSec !== null && lease.remainingSec <= 0) {
+        localStatus = "expired";
+      } else if (lease.renewalError) {
+        localStatus = "degraded";
+      } else if (lease.remainingSec !== null && lease.remainingSec < renewalWindowSec) {
+        localStatus = "renewing";
+      } else {
+        localStatus = lease.status || "active";
       }
-    } catch (lookupErr) {
-      vaultStatus = "lookup-failed";
-      console.error("[server] Lease lookup error:", lookupErr.message);
-    }
 
-    // Local computed status — Priority: rotating > expired > degraded > renewing > active
-    const renewalWindowSec = (lease.ttl || 0) * (1 - 0.75);
-    let localStatus;
-    if (poolStatus.rotationActive) {
-      localStatus = "rotating";
-    } else if (lease.remainingSec <= 0) {
-      localStatus = "expired";
-    } else if (lease.renewalError) {
-      localStatus = "degraded";
-    } else if (lease.remainingSec < renewalWindowSec) {
-      localStatus = "renewing";
-    } else {
-      localStatus = "active";
+      // Live Vault truth — only when vault mode and lease exists
+      let vaultStatus = "unknown";
+      if (lease.leaseId && connectorMode === "vault") {
+        try {
+          const lookup = await connectorLookupLease(lease.leaseId);
+          vaultStatus  = lookup.status;
+
+          if (lookup.status === "revoked" && !poolStatus.rotationActive) {
+            log.warn("Vault reports lease revoked — triggering recovery", { role: vaultRole });
+            connector.forceRotation("vault-revoked", { role: vaultRole }).catch((err) =>
+              log.error("Auto-recovery failed", { role: vaultRole, error: err.message })
+            );
+          }
+        } catch (lookupErr) {
+          vaultStatus = "lookup-failed";
+          log.error("Lease lookup error", { role: vaultRole, error: lookupErr.message });
+        }
+      }
+
+      roles[vaultRole] = {
+        lease_id:      lease.leaseId      || null,
+        user:          lease.user         || null,
+        ttl:           lease.ttl          || null,
+        remaining_sec: lease.remainingSec ?? null,
+        issued_at:     lease.issuedAt     || null,
+        expires_at:    lease.expiresAt    || null,
+        issued_for:    lease.issuedFor    || null,
+        local_status:  localStatus,
+        vault_status:  vaultStatus,
+        ...(lease.renewalError && { renewal_error: lease.renewalError }),
+      };
     }
 
     res.json({
-      lease_id:             lease.leaseId      || null,
-      ttl:                  lease.ttl           || null,
-      remaining_sec:        lease.remainingSec  ?? null,
-      issued_at:            lease.issuedAt      || null,
-      expires_at:           lease.expiresAt     || null,
-      local_status:         localStatus,
-      vault_status:         vaultStatus,
-      rotation_in_progress: poolStatus.rotationActive,
-      rotation_count:       poolStatus.rotationCount,
-      ...(lease.renewalError && { renewal_error: lease.renewalError }),
+      mode:            connectorMode,
+      roles,
+      rotation_active: poolStatus.rotationActive,
+      rotation_count:  poolStatus.rotationCount,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post("/health/lease/rotate", async (_req, res) => {
+app.post("/health/lease/rotate", async (req, res) => {
   try {
-    const connector = require("./connector");
+    // Optional: body.role targets a specific JWT role — defaults to all known roles
+    const targetRole    = req.body?.role;
+    const rolesToRotate = targetRole
+      ? [connectorResolveRole(targetRole)]
+      : connectorKnownRoles();
 
-    if (typeof connector.forceRotation !== "function") {
-      return res.status(501).json({ error: "Active connector does not support forced rotation" });
+    const results = {};
+
+    for (const vaultRole of rolesToRotate) {
+      try {
+        const creds = await connector.forceRotation("api-request", { role: vaultRole });
+        await poolManager.rotatePool(creds, "api-request");
+        results[vaultRole] = { rotated: true, user: creds.user };
+      } catch (err) {
+        results[vaultRole] = { rotated: false, error: err.message };
+      }
     }
 
-    const creds = await connector.forceRotation("api-request");
-
-    // Await pool rotation explicitly so the response reflects the completed state.
-    // rotatePool deduplicates — if emitRotation already triggered it, this joins
-    // that promise instead of starting a second rotation.
-    await poolManager.rotatePool(creds, "api-request");
-
     const poolStatus = poolManager.getStatus();
-    const lease      = connector.getLeaseInfo();
 
-    console.log("[server] Forced rotation via API | user:", creds.user);
+    log.info("Forced rotation via API", { roles: Object.keys(results) });
 
     res.json({
-      rotated:        true,
-      lease_id:       lease.leaseId      || null,
-      ttl:            lease.ttl           || null,
-      remaining_sec:  lease.remainingSec  ?? null,
-      issued_at:      lease.issuedAt      || null,
+      mode:           connectorMode,
+      results,
       rotation_count: poolStatus.rotationCount,
     });
   } catch (err) {
@@ -297,33 +348,38 @@ app.post("/health/lease/rotate", async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Ask — context filtered by trust level
+// Ask — context filtered by trust level, queries scoped by user role
 // ---------------------------------------------------------------------------
-app.post("/ask", async (req, res) => {
+app.post("/ask", authenticateOptional, async (req, res) => {
   const { question } = req.body;
   if (!question) return res.status(400).json({ error: "question is required" });
 
+  const uc = req.userContext;
+
   try {
-    const source  = await getActiveSource();
+    const source  = await getActiveSource(uc);
     const allowed = getAllowedClassifications(source);
     const inList  = sqlInList(allowed);
 
     const [users, orders, prefs] = await Promise.all([
       poolManager.query(
         "SELECT first_name, last_name, email, city, country, joined FROM users ORDER BY id",
+        [], uc,
       ),
-      poolManager.query(`
-        SELECT u.first_name, o.item, o.category, o.quantity, o.price, o.ordered_at, o.classification
-        FROM orders o JOIN users u ON u.id = o.user_id
-        WHERE o.classification IN (${inList})
-        ORDER BY u.id, o.ordered_at
-      `),
-      poolManager.query(`
-        SELECT u.first_name, p.category, p.value, p.classification
-        FROM preferences p JOIN users u ON u.id = p.user_id
-        WHERE p.classification IN (${inList})
-        ORDER BY u.id, p.category
-      `),
+      poolManager.query(
+        `SELECT u.first_name, o.item, o.category, o.quantity, o.price, o.ordered_at, o.classification
+         FROM orders o JOIN users u ON u.id = o.user_id
+         WHERE o.classification IN (${inList})
+         ORDER BY u.id, o.ordered_at`,
+        [], uc,
+      ),
+      poolManager.query(
+        `SELECT u.first_name, p.category, p.value, p.classification
+         FROM preferences p JOIN users u ON u.id = p.user_id
+         WHERE p.classification IN (${inList})
+         ORDER BY u.id, p.category`,
+        [], uc,
+      ),
     ]);
 
     const fmt = (rows) => rows.map((r) => JSON.stringify(r)).join("\n");
@@ -350,6 +406,13 @@ ${context}
 Question: ${question}
 Answer:`;
 
+    log.info("/ask", {
+      user:     uc?.sub   || "anonymous",
+      role:     uc?.role  || "none",
+      source,
+      question: question.substring(0, 80),
+    });
+
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Transfer-Encoding", "chunked");
     res.setHeader("X-Accel-Buffering", "no");
@@ -371,10 +434,7 @@ Answer:`;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const lines = decoder
-        .decode(value, { stream: true })
-        .split("\n")
-        .filter(Boolean);
+      const lines = decoder.decode(value, { stream: true }).split("\n").filter(Boolean);
       for (const line of lines) {
         try {
           const json = JSON.parse(line);
@@ -396,7 +456,7 @@ Answer:`;
 // ---------------------------------------------------------------------------
 
 async function gracefulShutdown(signal) {
-  console.log(`[server] ${signal} received — shutting down...`);
+  log.info(`${signal} received — shutting down`);
   await poolManager.shutdown();
   process.exit(0);
 }
@@ -407,12 +467,12 @@ process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
 async function start() {
   await poolManager.initialize();
   app.listen(PORT, () => {
-    console.log(`[server] Backend listening on port ${PORT}`);
-    console.log(`[server] Ollama: ${OLLAMA_ADDR}`);
+    log.info("Backend listening", { port: PORT, mode: connectorMode });
+    log.info("Ollama configured", { endpoint: OLLAMA_ADDR });
   });
 }
 
 start().catch((err) => {
-  console.error("[server] Failed to start:", err.message);
+  log.error("Failed to start", { error: err.message });
   process.exit(1);
 });

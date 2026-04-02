@@ -55,12 +55,14 @@ fi
 # ==========================================
 
 if vault read database/config/postgres > /dev/null 2>&1; then
-  echo "✅ Database configuration 'postgres' already exists."
+  echo "✅ Database configuration 'postgres' already exists — updating allowed_roles..."
+  vault write database/config/postgres \
+    allowed_roles="app-role,viewer-read,support-read,admin-read" > /dev/null
 else
   echo "⏳ Configuring database connection 'postgres'..."
   vault write database/config/postgres \
     plugin_name=postgresql-database-plugin \
-    allowed_roles="app-role" \
+    allowed_roles="app-role,viewer-read,support-read,admin-read" \
     connection_url="postgresql://{{username}}:{{password}}@db:5432/appdb?sslmode=disable" \
     username="appuser" \
     password="apppassword" > /dev/null
@@ -81,6 +83,48 @@ else
     default_ttl="1h" \
     max_ttl="24h" > /dev/null
   echo "✅ Database role configured."
+fi
+
+# Role-scoped tiers — viewer / support / admin
+# Schema tables: users, orders, preferences (no products/order_items in this workshop)
+
+if vault read database/roles/viewer-read > /dev/null 2>&1; then
+  echo "✅ Database role 'viewer-read' already exists."
+else
+  echo "⏳ Configuring database role 'viewer-read'..."
+  vault write database/roles/viewer-read \
+    db_name=postgres \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT ON users TO \"{{name}}\";" \
+    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    default_ttl="1h" \
+    max_ttl="24h" > /dev/null
+  echo "✅ Database role 'viewer-read' configured."
+fi
+
+if vault read database/roles/support-read > /dev/null 2>&1; then
+  echo "✅ Database role 'support-read' already exists."
+else
+  echo "⏳ Configuring database role 'support-read'..."
+  vault write database/roles/support-read \
+    db_name=postgres \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT ON users, orders, preferences TO \"{{name}}\";" \
+    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    default_ttl="1h" \
+    max_ttl="24h" > /dev/null
+  echo "✅ Database role 'support-read' configured."
+fi
+
+if vault read database/roles/admin-read > /dev/null 2>&1; then
+  echo "✅ Database role 'admin-read' already exists."
+else
+  echo "⏳ Configuring database role 'admin-read'..."
+  vault write database/roles/admin-read \
+    db_name=postgres \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\"; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\";" \
+    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    default_ttl="1h" \
+    max_ttl="24h" > /dev/null
+  echo "✅ Database role 'admin-read' configured."
 fi
 
 # ==========================================
@@ -228,8 +272,21 @@ echo "✅ JWT auth configured."
 
 echo "⏳ Writing policy 'zero-trust-jwt-lab'..."
 vault policy write zero-trust-jwt-lab - <<'EOF'
-# Allow reading dynamic database credentials
+# Default fallback role (backward compatibility)
 path "database/creds/app-role" {
+  capabilities = ["read"]
+}
+
+# Role-scoped credential paths (JWT role → Vault DB role mapping in connector.js)
+path "database/creds/viewer-read" {
+  capabilities = ["read"]
+}
+
+path "database/creds/support-read" {
+  capabilities = ["read"]
+}
+
+path "database/creds/admin-read" {
   capabilities = ["read"]
 }
 
