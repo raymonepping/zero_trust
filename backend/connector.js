@@ -1,85 +1,81 @@
 /**
- * connector.js — Vault credential provider
+ * connector.js — AppRole credential provider
  *
- * This file is volume-mounted into the container so you can swap it out
- * without rebuilding the image. Nodemon will hot-reload the backend
- * automatically when you save changes here.
+ * Phase 3: authenticates to Vault using AppRole (role_id + secret_id),
+ * exchanges them for a short-lived Vault token, then fetches dynamic
+ * PostgreSQL credentials from the database secrets engine.
  *
- * Phase 1: reads static credentials from Vault KV v2
- *   → set VAULT_MODE=kv (or leave unset)
+ * This is the recommended pattern for applications — no long-lived root
+ * token required. The app only knows its role_id and secret_id.
  *
- * Phase 2 (current): dynamic credentials from Vault database secrets engine
- *   → set VAULT_MODE=dynamic
+ * Required environment variables:
+ *   VAULT_ADDR      — Vault server address (default: http://vault:8200)
+ *   VAULT_ROLE_ID   — AppRole role_id
+ *   VAULT_SECRET_ID — AppRole secret_id
+ *   VAULT_DB_ROLE   — database role name (default: app-role)
  *
- * Vault setup for dynamic mode:
- *   vault secrets enable database
- *   vault write database/config/postgres \
- *     plugin_name=postgresql-database-plugin \
- *     allowed_roles="app-role" \
- *     connection_url="postgresql://{{username}}:{{password}}@localhost:5432/appdb?sslmode=disable" \
- *     username="appuser" password="apppassword"
- *   vault write database/roles/app-role \
- *     db_name=postgres \
- *     creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO \"{{name}}\"; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\";" \
- *     default_ttl="1h" max_ttl="24h"
+ * Vault setup (run setup_vault.sh — AppRole section handles this):
+ *   vault auth enable approle
+ *   vault policy write app-policy ...
+ *   vault write auth/approle/role/zero-trust-app token_policies="app-policy" ...
  */
 
-const log = require('./logger');
-
-const VAULT_ADDR    = process.env.VAULT_ADDR     || 'http://vault:8200';
-const VAULT_TOKEN   = process.env.VAULT_TOKEN;
-const VAULT_MODE    = process.env.VAULT_MODE      || 'dynamic';
-const VAULT_KV_PATH = process.env.VAULT_KV_PATH   || 'secret/data/postgres';
+const VAULT_ADDR    = process.env.VAULT_ADDR      || 'http://vault:8200';
+const VAULT_ROLE_ID = process.env.VAULT_ROLE_ID;
+const VAULT_SECRET_ID = process.env.VAULT_SECRET_ID;
 const VAULT_DB_ROLE = process.env.VAULT_DB_ROLE   || 'app-role';
 
-if (!VAULT_TOKEN) throw new Error('VAULT_TOKEN is not set');
+if (!VAULT_ROLE_ID)   throw new Error('VAULT_ROLE_ID is not set');
+if (!VAULT_SECRET_ID) throw new Error('VAULT_SECRET_ID is not set');
 
 // ---------------------------------------------------------------------------
-// Phase 1 — static credentials from KV v2
+// Step 1 — AppRole login → short-lived Vault token
 // ---------------------------------------------------------------------------
-async function getKvCredentials() {
-  const res = await fetch(`${VAULT_ADDR}/v1/${VAULT_KV_PATH}`, {
-    headers: { 'X-Vault-Token': VAULT_TOKEN },
+async function getVaultToken() {
+  const res = await fetch(`${VAULT_ADDR}/v1/auth/approle/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      role_id:   VAULT_ROLE_ID,
+      secret_id: VAULT_SECRET_ID,
+    }),
   });
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Vault KV responded ${res.status}: ${body}`);
+    throw new Error(`AppRole login failed ${res.status}: ${body}`);
   }
 
   const json = await res.json();
-  const secret = json.data?.data;
-  if (!secret) throw new Error(`No data found at ${VAULT_KV_PATH}`);
+  const token = json.auth?.client_token;
+  const ttl   = json.auth?.lease_duration;
 
-  return {
-    host:     secret.host     || 'db',
-    port:     Number(secret.port) || 5432,
-    database: secret.database || 'appdb',
-    user:     secret.username,
-    password: secret.password,
-    source:   'vault-kv',
-    path:     VAULT_KV_PATH,
-  };
+  if (!token) throw new Error('AppRole login did not return a token');
+
+  console.log(`[connector] AppRole login successful — token TTL: ${ttl}s`);
+  return token;
 }
 
 // ---------------------------------------------------------------------------
-// Phase 2 — dynamic credentials from database secrets engine
+// Step 2 — use the token to fetch dynamic DB credentials
 // ---------------------------------------------------------------------------
-async function getDynamicCredentials() {
+async function getCredentials() {
+  const token = await getVaultToken();
+
   const res = await fetch(`${VAULT_ADDR}/v1/database/creds/${VAULT_DB_ROLE}`, {
-    headers: { 'X-Vault-Token': VAULT_TOKEN },
+    headers: { 'X-Vault-Token': token },
   });
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Vault dynamic creds responded ${res.status}: ${body}`);
+    throw new Error(`Dynamic creds request failed ${res.status}: ${body}`);
   }
 
   const json = await res.json();
   const { username, password } = json.data;
   const lease_duration = json.lease_duration;
 
-  log.info('Dynamic credentials issued', { user: username, ttl: lease_duration });
+  console.log(`[connector] Dynamic credentials issued — user: ${username}, TTL: ${lease_duration}s`);
 
   return {
     host:     'db',
@@ -87,20 +83,10 @@ async function getDynamicCredentials() {
     database: 'appdb',
     user:     username,
     password: password,
-    source:   'vault-dynamic',
+    source:   'vault-approle',
     path:     `database/creds/${VAULT_DB_ROLE}`,
     ttl:      lease_duration,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Exported function — called by server.js
-// ---------------------------------------------------------------------------
-async function getCredentials() {
-  if (VAULT_MODE === 'kv') {
-    return getKvCredentials();
-  }
-  return getDynamicCredentials();
-}
-
-module.exports = { getCredentials, MODE: "vault" };
+module.exports = { getCredentials };
