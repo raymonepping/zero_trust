@@ -20,25 +20,34 @@
  *   vault write auth/approle/role/zero-trust-app token_policies="app-policy" ...
  */
 
-const VAULT_ADDR    = process.env.VAULT_ADDR      || 'http://vault:8200';
-const VAULT_ROLE_ID = process.env.VAULT_ROLE_ID;
+const log = require('./logger');
+
+const VAULT_ADDR      = process.env.VAULT_ADDR      || 'http://vault:8200';
+const VAULT_ROLE_ID   = process.env.VAULT_ROLE_ID;
 const VAULT_SECRET_ID = process.env.VAULT_SECRET_ID;
-const VAULT_DB_ROLE = process.env.VAULT_DB_ROLE   || 'app-role';
+const VAULT_DB_ROLE   = process.env.VAULT_DB_ROLE   || 'app-role';
 
 if (!VAULT_ROLE_ID)   throw new Error('VAULT_ROLE_ID is not set');
 if (!VAULT_SECRET_ID) throw new Error('VAULT_SECRET_ID is not set');
 
 // ---------------------------------------------------------------------------
-// Step 1 — AppRole login → short-lived Vault token
+// Step 1 — AppRole login → short-lived Vault token (cached)
 // ---------------------------------------------------------------------------
+
+let cachedToken      = null;
+let tokenExpiresAt   = 0;
+
 async function getVaultToken() {
+  const now = Date.now();
+
+  if (cachedToken && now < tokenExpiresAt) {
+    return cachedToken;
+  }
+
   const res = await fetch(`${VAULT_ADDR}/v1/auth/approle/login`, {
-    method: 'POST',
+    method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      role_id:   VAULT_ROLE_ID,
-      secret_id: VAULT_SECRET_ID,
-    }),
+    body:    JSON.stringify({ role_id: VAULT_ROLE_ID, secret_id: VAULT_SECRET_ID }),
   });
 
   if (!res.ok) {
@@ -46,20 +55,35 @@ async function getVaultToken() {
     throw new Error(`AppRole login failed ${res.status}: ${body}`);
   }
 
-  const json = await res.json();
+  const json  = await res.json();
   const token = json.auth?.client_token;
   const ttl   = json.auth?.lease_duration;
 
   if (!token) throw new Error('AppRole login did not return a token');
 
-  console.log(`[connector] AppRole login successful — token TTL: ${ttl}s`);
+  log.info('AppRole login successful', { ttl });
+
+  cachedToken    = token;
+  tokenExpiresAt = now + Math.floor(ttl * 0.75 * 1000);
+
   return token;
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — use the token to fetch dynamic DB credentials
+// Step 2 — use the token to fetch dynamic DB credentials (cached)
 // ---------------------------------------------------------------------------
+
+const RENEWAL_THRESHOLD = 0.75;
+let cachedCreds    = null;
+let cacheExpiresAt = 0;
+
 async function getCredentials() {
+  const now = Date.now();
+
+  if (cachedCreds && now < cacheExpiresAt) {
+    return cachedCreds;
+  }
+
   const token = await getVaultToken();
 
   const res = await fetch(`${VAULT_ADDR}/v1/database/creds/${VAULT_DB_ROLE}`, {
@@ -75,18 +99,23 @@ async function getCredentials() {
   const { username, password } = json.data;
   const lease_duration = json.lease_duration;
 
-  console.log(`[connector] Dynamic credentials issued — user: ${username}, TTL: ${lease_duration}s`);
+  log.info('Dynamic credentials issued', { user: username, ttl: lease_duration });
 
-  return {
-    host:     'db',
-    port:     5432,
-    database: 'appdb',
-    user:     username,
-    password: password,
-    source:   'vault-approle',
-    path:     `database/creds/${VAULT_DB_ROLE}`,
-    ttl:      lease_duration,
+  cachedCreds = {
+    host:      'db',
+    port:      5432,
+    database:  'appdb',
+    user:      username,
+    password,
+    source:    'vault-approle',
+    path:      `database/creds/${VAULT_DB_ROLE}`,
+    ttl:       lease_duration,
+    issuedAt:  now,
+    expiresAt: now + lease_duration * 1000,
   };
+  cacheExpiresAt = now + Math.floor(lease_duration * RENEWAL_THRESHOLD * 1000);
+
+  return cachedCreds;
 }
 
-module.exports = { getCredentials };
+module.exports = { getCredentials, MODE: "vault" };
