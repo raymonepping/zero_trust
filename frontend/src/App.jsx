@@ -127,7 +127,6 @@ export default function App() {
       try {
         const res = await fetch('/api/health', { headers: getAuthHeaders() });
         const data = await res.json();
-        setDb(data.db === 'connected' ? 'connected' : 'error');
         // Update vault connectivity from health probe (independent of credentials)
         if (data.vault && !data.vault.ok) {
           setVault((v) => ({
@@ -135,6 +134,18 @@ export default function App() {
             status: 'error',
             vaultHealth: data.vault.status,
           }));
+        }
+        if (data.db === 'connected') {
+          setDb('connected');
+        } else {
+          // Health probe can misreport in legacy connector modes — verify with a real query
+          try {
+            const fallback = await fetch('/api/users', { headers: getAuthHeaders() });
+            const rows = await fallback.json();
+            setDb(Array.isArray(rows) ? 'connected' : 'error');
+          } catch {
+            setDb('error');
+          }
         }
       } catch {
         setDb('error');

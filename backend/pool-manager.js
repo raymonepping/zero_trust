@@ -55,7 +55,7 @@ const VAULT_SOURCED = new Set([
 // Old emitRotation fires listeners with (credentials) — one argument
 // ---------------------------------------------------------------------------
 
-const DEFAULT_ROLE = "app-role";
+const DEFAULT_ROLE = "viewer-read";
 
 // Resolve which pool to use for a given userContext.
 // Falls back to DEFAULT_ROLE for old connectors without resolveVaultRole.
