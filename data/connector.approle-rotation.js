@@ -28,6 +28,8 @@
 
 "use strict";
 
+const log = require("./logger");
+
 const VAULT_ADDR      = process.env.VAULT_ADDR      || "http://vault:8200";
 const VAULT_ROLE_ID   = process.env.VAULT_ROLE_ID;
 const VAULT_SECRET_ID = process.env.VAULT_SECRET_ID;
@@ -70,7 +72,7 @@ function onRotation(callback) {
 function emitRotation(credentials) {
   for (const listener of rotationListeners) {
     try { listener(credentials); }
-    catch (err) { console.error("[connector] Rotation listener error:", err.message); }
+    catch (err) { log.error("Rotation listener error", { error: err.message }); }
   }
 }
 
@@ -101,7 +103,7 @@ async function getVaultToken() {
   cachedToken    = token;
   tokenExpiresAt = now + (ttl * 1000);
 
-  console.log(`[connector] AppRole login OK | token TTL: ${ttl}s`);
+  log.info("AppRole login OK", { ttl });
   return token;
 }
 
@@ -145,9 +147,7 @@ async function fetchCredentials() {
     expiresAt: credentialExpiresAt,
   };
 
-  console.log(
-    `[connector] Dynamic credentials issued | user: ${username} | TTL: ${leaseDuration}s | lease: ${leaseId}`
-  );
+  log.info("Dynamic credentials issued", { user: username, ttl: leaseDuration, lease_id: leaseId });
 
   return currentCredentials;
 }
@@ -167,7 +167,7 @@ async function getCredentials() {
 // ---------------------------------------------------------------------------
 
 async function forceRotation(reason) {
-  console.log(`[connector] Forced rotation triggered | reason: ${reason}`);
+  log.warn("Forced rotation triggered", { reason });
   cachedToken    = null;
   tokenExpiresAt = 0;
 
@@ -185,10 +185,7 @@ function scheduleRenewal(ttlSeconds) {
   if (renewalTimer) { clearTimeout(renewalTimer); renewalTimer = null; }
 
   const delayMs = Math.floor(ttlSeconds * RENEWAL_THRESHOLD * 1000);
-  console.log(
-    `[connector] Next renewal in ${Math.round(delayMs / 1000)}s ` +
-    `(${Math.round(RENEWAL_THRESHOLD * 100)}% of ${ttlSeconds}s TTL)`
-  );
+  log.info("Next renewal scheduled", { delay_sec: Math.round(delayMs / 1000), threshold_pct: Math.round(RENEWAL_THRESHOLD * 100), ttl: ttlSeconds });
 
   renewalTimer = setTimeout(() => performRenewal(0), delayMs);
   if (renewalTimer.unref) renewalTimer.unref();
@@ -196,15 +193,15 @@ function scheduleRenewal(ttlSeconds) {
 
 async function performRenewal(retryIndex) {
   try {
-    console.log("[connector] Proactive renewal starting...");
+    log.info("Proactive renewal starting");
     const creds = await fetchCredentials();
     emitRotation(creds);
     scheduleRenewal(creds.ttl);
-    console.log("[connector] Proactive renewal complete");
+    log.info("Proactive renewal complete");
   } catch (err) {
-    console.error(`[connector] Proactive renewal failed: ${err.message}`);
+    log.error("Proactive renewal failed", { error: err.message });
     const delay = RETRY_DELAYS[Math.min(retryIndex, RETRY_DELAYS.length - 1)];
-    console.log(`[connector] Retrying in ${delay}s (attempt ${retryIndex + 1})`);
+    log.warn("Renewal retry scheduled", { delay, attempt: retryIndex + 1 });
     renewalTimer = setTimeout(() => performRenewal(retryIndex + 1), delay * 1000);
     if (renewalTimer.unref) renewalTimer.unref();
   }
@@ -218,14 +215,14 @@ async function startAutoRenewal() {
   running = true;
   const creds = await fetchCredentials();
   scheduleRenewal(creds.ttl);
-  console.log("[connector] Auto-renewal started");
+  log.info("Auto-renewal started");
   return creds;
 }
 
 function stop() {
   running = false;
   if (renewalTimer) { clearTimeout(renewalTimer); renewalTimer = null; }
-  console.log("[connector] Auto-renewal stopped");
+  log.info("Auto-renewal stopped");
 }
 
 function getLeaseInfo() {
@@ -247,6 +244,7 @@ function getLeaseInfo() {
 }
 
 module.exports = {
+  MODE: "vault",
   getCredentials,
   forceRotation,
   startAutoRenewal,
