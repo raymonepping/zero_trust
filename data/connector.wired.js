@@ -10,8 +10,8 @@ async function getCredentials() {
     host: "db",
     port: 5432,
     database: "appdb",
-    user: "agent_user",
-    password: "SuperSecret123!",
+    user: "appuser",
+    password: "apppassword",
     source: "static-config",
     path: "hardcoded",
   };

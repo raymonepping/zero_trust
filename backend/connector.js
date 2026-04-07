@@ -7,9 +7,9 @@
 
 async function getCredentials() {
   return {
-    host: "postgres",
+    host: "db",
     port: 5432,
-    database: "workshop",
+    database: "appdb",
     user: "agent_user",
     password: "SuperSecret123!",
     source: "static-config",
