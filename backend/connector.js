@@ -24,6 +24,8 @@
  *     default_ttl="1h" max_ttl="24h"
  */
 
+const log = require('./logger');
+
 const VAULT_ADDR    = process.env.VAULT_ADDR     || 'http://vault:8200';
 const VAULT_TOKEN   = process.env.VAULT_TOKEN;
 const VAULT_MODE    = process.env.VAULT_MODE      || 'dynamic';
@@ -77,7 +79,7 @@ async function getDynamicCredentials() {
   const { username, password } = json.data;
   const lease_duration = json.lease_duration;
 
-  console.log(`[connector] Dynamic credentials issued — user: ${username}, TTL: ${lease_duration}s`);
+  log.info('Dynamic credentials issued', { user: username, ttl: lease_duration });
 
   return {
     host:     'db',
@@ -101,4 +103,4 @@ async function getCredentials() {
   return getDynamicCredentials();
 }
 
-module.exports = { getCredentials };
+module.exports = { getCredentials, MODE: "vault" };

@@ -65,7 +65,19 @@ async function getKvCredentials() {
 // ---------------------------------------------------------------------------
 // Phase 2 — dynamic credentials from database secrets engine
 // ---------------------------------------------------------------------------
+
+// Cache: reuse credentials until 75% of TTL has elapsed
+const RENEWAL_THRESHOLD = 0.75;
+let cachedCreds   = null;
+let cacheExpiresAt = 0;
+
 async function getDynamicCredentials() {
+  const now = Date.now();
+
+  if (cachedCreds && now < cacheExpiresAt) {
+    return cachedCreds;
+  }
+
   const res = await fetch(`${VAULT_ADDR}/v1/database/creds/${VAULT_DB_ROLE}`, {
     headers: { 'X-Vault-Token': VAULT_TOKEN },
   });
@@ -81,7 +93,7 @@ async function getDynamicCredentials() {
 
   log.info('Dynamic credentials issued', { user: username, ttl: lease_duration });
 
-  return {
+  cachedCreds    = {
     host:     'db',
     port:     5432,
     database: 'appdb',
@@ -90,7 +102,12 @@ async function getDynamicCredentials() {
     source:   'vault-dynamic',
     path:     `database/creds/${VAULT_DB_ROLE}`,
     ttl:      lease_duration,
+    issuedAt: now,
+    expiresAt: now + lease_duration * 1000,
   };
+  cacheExpiresAt = now + Math.floor(lease_duration * RENEWAL_THRESHOLD * 1000);
+
+  return cachedCreds;
 }
 
 // ---------------------------------------------------------------------------
