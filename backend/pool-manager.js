@@ -90,6 +90,27 @@ function normalizeLeaseInfo(result) {
   return { [role]: { ...result, vaultRole: role } };
 }
 
+// Shims for lifecycle functions absent from early-stage workshop connectors
+const connectorStartAutoRenewal = typeof connector.startAutoRenewal === "function"
+  ? () => connector.startAutoRenewal()
+  : async () => connector.getCredentials();
+
+const connectorOnRotation = typeof connector.onRotation === "function"
+  ? (cb) => connector.onRotation(cb)
+  : () => {};
+
+const connectorStop = typeof connector.stop === "function"
+  ? () => connector.stop()
+  : () => {};
+
+const connectorRevokeLease = typeof connector.revokeLease === "function"
+  ? (id) => connector.revokeLease(id)
+  : async () => {};
+
+const connectorForceRotation = typeof connector.forceRotation === "function"
+  ? (reason, ctx) => connector.forceRotation(reason, ctx)
+  : (_reason, ctx) => connector.getCredentials(ctx);
+
 // ---------------------------------------------------------------------------
 // Pool builder
 // ---------------------------------------------------------------------------
@@ -159,7 +180,7 @@ async function performRotation(vaultRole, credentials, reason) {
   // Revoke previous lease after swap
   if (credentials.previousLeaseId) {
     try {
-      await connector.revokeLease(credentials.previousLeaseId);
+      await connectorRevokeLease(credentials.previousLeaseId);
     } catch (err) {
       log.error("Old lease revoke failed", {
         role:     vaultRole,
@@ -229,7 +250,7 @@ async function recoverFromAuthFailure(vaultRole, userContext) {
   }
 
   state.recoveryInProgress = (async () => {
-    const freshCreds = await connector.forceRotation("auth-error", userContext);
+    const freshCreds = await connectorForceRotation("auth-error", userContext);
     await rotatePool(vaultRole, freshCreds, "reactive");
   })();
 
@@ -293,7 +314,7 @@ async function initialize() {
   // startAutoRenewal() fetches credentials and calls emitRotation() internally.
   // Register the proactive rotation listener AFTER it returns so the initial
   // credential fetch does not trigger a pool rotation before we build the pool.
-  const credsMap = normalizeCredsMap(await connector.startAutoRenewal());
+  const credsMap = normalizeCredsMap(await connectorStartAutoRenewal());
 
   for (const [vaultRole, creds] of credsMap) {
     try {
@@ -304,7 +325,7 @@ async function initialize() {
   }
 
   // Now safe to register — all future proactive renewals will rotate the pool.
-  connector.onRotation(handleProactiveRotation);
+  connectorOnRotation(handleProactiveRotation);
 
   initialized = true;
   log.info("Pool manager initialized", { pools: pools.size });
@@ -316,7 +337,7 @@ async function initialize() {
 
 async function shutdown() {
   shuttingDown = true;
-  connector.stop();
+  connectorStop();
 
   // Wait for in-progress rotations
   for (const [, state] of pools) {

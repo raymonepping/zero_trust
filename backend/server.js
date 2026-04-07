@@ -147,19 +147,21 @@ app.get("/", async (_req, res) => {
 });
 
 app.get("/health", async (_req, res) => {
+  const needsVault = connectorMode === "vault";
+
   const [dbResult, vaultResult] = await Promise.allSettled([
     poolManager.query("SELECT 1"),
-    probeVault(),
+    needsVault ? probeVault() : Promise.resolve({ ok: true, status: "not-used", sealed: false, version: null }),
   ]);
 
   const dbOk    = dbResult.status === "fulfilled";
-  const vaultOk = vaultResult.status === "fulfilled" && vaultResult.value.ok;
+  const vaultOk = !needsVault || (vaultResult.status === "fulfilled" && vaultResult.value.ok);
   const vault   = vaultResult.status === "fulfilled" ? vaultResult.value : { ok: false, status: "probe failed" };
 
   const overall    = dbOk && vaultOk ? "ok" : "degraded";
   const httpStatus = dbOk ? 200 : 503;
 
-  if (!vaultOk) {
+  if (needsVault && !vaultOk) {
     log.warn("Health check: Vault degraded", { vault: vault.status });
   }
 
@@ -167,12 +169,9 @@ app.get("/health", async (_req, res) => {
     status: overall,
     mode:   connectorMode,
     db:     dbOk ? "connected" : dbResult.reason?.message || "error",
-    vault: {
-      status:  vault.status,
-      ok:      vault.ok,
-      sealed:  vault.sealed ?? null,
-      version: vault.version || null,
-    },
+    vault:  needsVault
+      ? { status: vault.status, ok: vault.ok, sealed: vault.sealed ?? null, version: vault.version || null }
+      : { status: "not-used", ok: null, sealed: null, version: null },
   });
 });
 
