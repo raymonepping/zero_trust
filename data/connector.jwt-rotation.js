@@ -457,6 +457,7 @@ function getLeaseInfo() {
 }
 
 module.exports = {
+  MODE: "vault",
   getCredentials,
   forceRotation,
   startAutoRenewal,
