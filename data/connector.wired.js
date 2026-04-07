@@ -17,4 +17,4 @@ async function getCredentials() {
   };
 }
 
-module.exports = { getCredentials };
+module.exports = { getCredentials, MODE: "static" };
