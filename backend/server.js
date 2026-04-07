@@ -6,6 +6,7 @@ const poolManager = require("./pool-manager");
 const connector   = require("./connector");
 const log         = require("./logger");
 const { authenticateOptional } = require("./auth");
+const { resolveVaultRole } = require("./roleResolver");
 
 const app         = express();
 const PORT        = process.env.PORT || 3000;
@@ -77,6 +78,34 @@ async function getActiveSource(userContext) {
 
 function sqlInList(values) {
   return values.map((v) => `'${v}'`).join(", ");
+}
+
+function selectAskDatasets(question) {
+  const q = question.toLowerCase();
+  const selected = new Set(["users"]);
+
+  if (/(order|orders|spent|spend|purchase|purchases|bought|buy)/.test(q)) {
+    selected.add("orders");
+  }
+  if (/(preference|preferences|interest|interests|music|sports|cuisine|travel|clearance|salary)/.test(q)) {
+    selected.add("preferences");
+  }
+  if (/(training|course|courses|certified|certification|score|completed)/.test(q)) {
+    selected.add("training");
+  }
+  if (/(ticket|tickets|priority|status|open ticket|support load|issue|issues|incident)/.test(q)) {
+    selected.add("tickets");
+  }
+  if (/(project|projects|budget|budgets|highest-budget|highest budget)/.test(q)) {
+    selected.add("projects");
+  }
+
+  // If nothing beyond users matched, fall back to all datasets for broad questions.
+  if (selected.size === 1) {
+    return new Set(["users", "orders", "preferences", "training", "tickets", "projects"]);
+  }
+
+  return selected;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,10 +182,13 @@ app.get("/health", async (_req, res) => {
 // ---------------------------------------------------------------------------
 app.get("/users", authenticateOptional, async (req, res) => {
   try {
+    const uc = req.userContext
+      ? { ...req.userContext, role: resolveVaultRole(req.user) }
+      : { role: "viewer-read" };
     const { rows } = await poolManager.query(
       "SELECT id, first_name, last_name, email, city, country, joined FROM users ORDER BY id",
       [],
-      req.userContext,
+      uc,
     );
     res.json(rows);
   } catch (err) {
@@ -166,27 +198,33 @@ app.get("/users", authenticateOptional, async (req, res) => {
 
 app.get("/orders", authenticateOptional, async (req, res) => {
   try {
-    const source  = await getActiveSource(req.userContext);
-    const allowed = getAllowedClassifications(source);
+    const uc = req.userContext
+      ? { ...req.userContext, role: resolveVaultRole(req.user) }
+      : { role: "viewer-read" };
+
     const { rows } = await poolManager.query(
       `SELECT o.id, u.first_name, u.last_name, o.item, o.category,
               o.quantity, o.price, o.ordered_at, o.classification
        FROM orders o
        JOIN users u ON u.id = o.user_id
-       WHERE o.classification IN (${sqlInList(allowed)})
        ORDER BY o.ordered_at DESC`,
       [],
-      req.userContext,
+      uc,
     );
+
     res.json(rows);
   } catch (err) {
+    if (err.code === "42501") return res.json([]);
     res.status(500).json({ error: err.message });
   }
 });
 
 app.get("/preferences", authenticateOptional, async (req, res) => {
   try {
-    const source  = await getActiveSource(req.userContext);
+    const uc = req.userContext
+      ? { ...req.userContext, role: resolveVaultRole(req.user) }
+      : { role: "viewer-read" };
+    const source  = await getActiveSource(uc);
     const allowed = getAllowedClassifications(source);
     const { rows } = await poolManager.query(
       `SELECT p.id, u.first_name, u.last_name, p.category, p.value, p.classification
@@ -195,10 +233,86 @@ app.get("/preferences", authenticateOptional, async (req, res) => {
        WHERE p.classification IN (${sqlInList(allowed)})
        ORDER BY u.id, p.category`,
       [],
-      req.userContext,
+      uc,
     );
     res.json(rows);
   } catch (err) {
+    if (err.code === "42501") return res.json([]);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/training", authenticateOptional, async (req, res) => {
+  try {
+    const uc = req.userContext
+      ? { ...req.userContext, role: resolveVaultRole(req.user) }
+      : { role: "viewer-read" };
+    const source  = await getActiveSource(uc);
+    const allowed = getAllowedClassifications(source);
+    const { rows } = await poolManager.query(
+      `SELECT t.id, u.first_name, u.last_name, t.course, t.provider,
+              t.completed_at, t.score, t.certified, t.classification
+       FROM training t
+       JOIN users u ON u.id = t.user_id
+       WHERE t.classification IN (${sqlInList(allowed)})
+       ORDER BY t.completed_at DESC, u.id`,
+      [],
+      uc,
+    );
+    res.json(rows);
+  } catch (err) {
+    if (err.code === "42501") return res.json([]);
+    log.error("GET /training failed", { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/tickets", authenticateOptional, async (req, res) => {
+  try {
+    const uc = req.userContext
+      ? { ...req.userContext, role: resolveVaultRole(req.user) }
+      : { role: "viewer-read" };
+    const source  = await getActiveSource(uc);
+    const allowed = getAllowedClassifications(source);
+    const { rows } = await poolManager.query(
+      `SELECT t.id, u.first_name, u.last_name, t.title, t.system,
+              t.priority, t.status, t.opened_at, t.classification
+       FROM tickets t
+       JOIN users u ON u.id = t.user_id
+       WHERE t.classification IN (${sqlInList(allowed)})
+       ORDER BY t.opened_at DESC, u.id`,
+      [],
+      uc,
+    );
+    res.json(rows);
+  } catch (err) {
+    if (err.code === "42501") return res.json([]);
+    log.error("GET /tickets failed", { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/projects", authenticateOptional, async (req, res) => {
+  try {
+    const uc = req.userContext
+      ? { ...req.userContext, role: resolveVaultRole(req.user) }
+      : { role: "viewer-read" };
+    const source  = await getActiveSource(uc);
+    const allowed = getAllowedClassifications(source);
+    const { rows } = await poolManager.query(
+      `SELECT p.id, u.first_name, u.last_name, p.project_name, p.role,
+              p.budget, p.start_date, p.status, p.classification
+       FROM projects p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.classification IN (${sqlInList(allowed)})
+       ORDER BY p.start_date DESC, u.id`,
+      [],
+      uc,
+    );
+    res.json(rows);
+  } catch (err) {
+    if (err.code === "42501") return res.json([]);
+    log.error("GET /projects failed", { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -208,7 +322,10 @@ app.get("/preferences", authenticateOptional, async (req, res) => {
 // ---------------------------------------------------------------------------
 app.get("/credentials", authenticateOptional, async (req, res) => {
   try {
-    const creds   = await connector.getCredentials(req.userContext);
+    const uc    = req.userContext
+      ? { ...req.userContext, role: resolveVaultRole(req.user) }
+      : undefined;
+    const creds   = await connector.getCredentials(uc);
     const status  = poolManager.getStatus();
     const allowed = getAllowedClassifications(creds.source);
     const level   = TRUST_LEVELS[creds.source] ?? 0;
@@ -227,7 +344,7 @@ app.get("/credentials", authenticateOptional, async (req, res) => {
       issuedFor:               creds.issuedFor || null,
       trust_level:             level,
       allowed_classifications: allowed,
-      requestedBy:             req.userContext || null,
+      requestedBy:             uc || null,
       pools:                   status.pools,
       leases:                  status.leases,
       rotations:               status.rotationCount,
@@ -354,50 +471,113 @@ app.post("/ask", authenticateOptional, async (req, res) => {
   const { question } = req.body;
   if (!question) return res.status(400).json({ error: "question is required" });
 
-  const uc = req.userContext;
+  const uc = req.userContext
+    ? { ...req.userContext, role: resolveVaultRole(req.user) }
+    : { role: "viewer-read" };
 
   try {
     const source  = await getActiveSource(uc);
     const allowed = getAllowedClassifications(source);
     const inList  = sqlInList(allowed);
+    const datasets = selectAskDatasets(question);
 
-    const [users, orders, prefs] = await Promise.all([
-      poolManager.query(
+    // Per-query permission guard: some DB roles (e.g. viewer-read) only have
+    // GRANT on a subset of tables. Catch 42501 (permission denied) per-query
+    // and return an empty result — the trust-level filter and GRANT work together.
+    const safeQuery = async (sql, params) => {
+      try {
+        return await poolManager.query(sql, params, uc);
+      } catch (err) {
+        if (err.code === "42501") {
+          log.info("/ask table access denied — role lacks GRANT", { role: uc.role, code: err.code });
+          return { rows: [] };
+        }
+        throw err;
+      }
+    };
+
+    const [users, orders, prefs, training, tickets, projects] = await Promise.all([
+      safeQuery(
         "SELECT first_name, last_name, email, city, country, joined FROM users ORDER BY id",
-        [], uc,
+        [],
       ),
-      poolManager.query(
+      safeQuery(
         `SELECT u.first_name, o.item, o.category, o.quantity, o.price, o.ordered_at, o.classification
          FROM orders o JOIN users u ON u.id = o.user_id
          WHERE o.classification IN (${inList})
          ORDER BY u.id, o.ordered_at`,
-        [], uc,
+        [],
       ),
-      poolManager.query(
+      safeQuery(
         `SELECT u.first_name, p.category, p.value, p.classification
          FROM preferences p JOIN users u ON u.id = p.user_id
          WHERE p.classification IN (${inList})
          ORDER BY u.id, p.category`,
-        [], uc,
+        [],
+      ),
+      safeQuery(
+        `SELECT u.first_name, t.course, t.provider, t.completed_at, t.score, t.certified, t.classification
+         FROM training t JOIN users u ON u.id = t.user_id
+         WHERE t.classification IN (${inList})
+         ORDER BY u.id, t.completed_at`,
+        [],
+      ),
+      safeQuery(
+        `SELECT u.first_name, t.title, t.system, t.priority, t.status, t.opened_at, t.classification
+         FROM tickets t JOIN users u ON u.id = t.user_id
+         WHERE t.classification IN (${inList})
+         ORDER BY u.id, t.opened_at`,
+        [],
+      ),
+      safeQuery(
+        `SELECT u.first_name, p.project_name, p.role, p.budget, p.start_date, p.status, p.classification
+         FROM projects p JOIN users u ON u.id = p.user_id
+         WHERE p.classification IN (${inList})
+         ORDER BY u.id, p.start_date`,
+        [],
       ),
     ]);
 
     const fmt = (rows) => rows.map((r) => JSON.stringify(r)).join("\n");
 
-    const context = `
-USERS:
-${fmt(users.rows)}
+    const sections = [];
 
-ORDERS (visible at trust level — classifications: ${allowed.join(", ")}):
-${fmt(orders.rows)}
+    if (datasets.has("users")) {
+      sections.push(`USERS:\n${fmt(users.rows)}`);
+    }
+    if (datasets.has("orders")) {
+      sections.push(`ORDERS (visible at trust level — classifications: ${allowed.join(", ")}):\n${fmt(orders.rows)}`);
+    }
+    if (datasets.has("preferences")) {
+      sections.push(`PREFERENCES (visible at trust level — classifications: ${allowed.join(", ")}):\n${fmt(prefs.rows)}`);
+    }
+    if (datasets.has("training")) {
+      sections.push(`TRAINING (visible at trust level — classifications: ${allowed.join(", ")}):\n${fmt(training.rows)}`);
+    }
+    if (datasets.has("tickets")) {
+      sections.push(`TICKETS (visible at trust level — classifications: ${allowed.join(", ")}):\n${fmt(tickets.rows)}`);
+    }
+    if (datasets.has("projects")) {
+      sections.push(`PROJECTS (visible at trust level — classifications: ${allowed.join(", ")}):\n${fmt(projects.rows)}`);
+    }
 
-PREFERENCES (visible at trust level — classifications: ${allowed.join(", ")}):
-${fmt(prefs.rows)}
-`.trim();
+    const context = sections.join("\n\n").trim();
 
-    const prompt = `You are a helpful assistant with access to a user database.
-Use only the data provided below to answer the question. Be concise and friendly.
+    const prompt = `You are a careful assistant with access to a user database.
+Use only the data provided below to answer the question.
+Do not invent, estimate, or assume any facts that are not explicitly present in the data.
+Be concise and friendly, but prioritize correctness over fluency.
 Note: some data may be hidden based on the current security level (${source}).
+
+Rules:
+- Use only the rows shown in the DATA section.
+- Never infer missing values.
+- For numeric comparisons such as highest, lowest, most, least, total, or ranking:
+  compare the exact numeric values from the rows.
+- Do not reinterpret numbers, add zeros, round values, or convert units unless the data explicitly says so.
+- If a user has multiple rows, consider all of that user's rows before answering.
+- When the answer depends on one specific row, include the exact row values that justify the answer.
+- If the data is insufficient, say so explicitly.
 
 --- DATA ---
 ${context}
@@ -407,9 +587,14 @@ Question: ${question}
 Answer:`;
 
     log.info("/ask", {
-      user:     uc?.sub   || "anonymous",
-      role:     uc?.role  || "none",
+      user:
+        req.user?.preferred_username ||
+        req.user?.email ||
+        req.user?.sub ||
+        "anonymous",
+      role: uc?.role || "none",
       source,
+      datasets: [...datasets],
       question: question.substring(0, 80),
     });
 
@@ -448,6 +633,51 @@ Answer:`;
   } catch (err) {
     if (!res.headersSent) res.status(500).json({ error: err.message });
     else res.end();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Auth token proxy — exchanges username/password for a Keycloak JWT.
+// The browser cannot reach Keycloak directly (net-data is Docker-internal),
+// so the backend acts as a thin proxy. Returns only the access_token.
+// ---------------------------------------------------------------------------
+const KEYCLOAK_ADDR      = process.env.KEYCLOAK_ADDR      || "http://keycloak:8080";
+const KEYCLOAK_REALM     = process.env.KEYCLOAK_REALM     || "zero-trust";
+const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || "backend";
+
+app.post("/auth/token", async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: "username and password are required" });
+  }
+
+  try {
+    const body = new URLSearchParams({
+      grant_type:    "password",
+      client_id:     KEYCLOAK_CLIENT_ID,
+      client_secret: process.env.KEYCLOAK_CLIENT_SECRET || "",
+      username,
+      password,
+      scope:         "openid",
+    });
+
+    const kcRes = await fetch(
+      `${KEYCLOAK_ADDR}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`,
+      { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() }
+    );
+
+    if (!kcRes.ok) {
+      await kcRes.text();
+      log.warn("User login failed", { username, status: kcRes.status });
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const json = await kcRes.json();
+    log.info("User token issued", { username, expires_in: json.expires_in });
+    res.json({ access_token: json.access_token, expires_in: json.expires_in });
+  } catch (err) {
+    log.error("Keycloak proxy error", { error: err.message });
+    res.status(502).json({ error: "Identity provider unreachable" });
   }
 });
 

@@ -64,6 +64,42 @@ CREATE TABLE IF NOT EXISTS preferences (
     CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'))
 );
 
+CREATE TABLE IF NOT EXISTS training (
+  id              SERIAL PRIMARY KEY,
+  user_id         INT NOT NULL REFERENCES users(id),
+  course          TEXT NOT NULL,
+  provider        TEXT,
+  completed_at    DATE,
+  score           INT,
+  certified       BOOLEAN NOT NULL DEFAULT false,
+  classification  TEXT NOT NULL DEFAULT 'internal'
+    CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'))
+);
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id              SERIAL PRIMARY KEY,
+  user_id         INT NOT NULL REFERENCES users(id),
+  title           TEXT NOT NULL,
+  system          TEXT,
+  priority        TEXT,
+  status          TEXT,
+  opened_at       DATE,
+  classification  TEXT NOT NULL DEFAULT 'internal'
+    CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'))
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id              SERIAL PRIMARY KEY,
+  user_id         INT NOT NULL REFERENCES users(id),
+  project_name    TEXT NOT NULL,
+  role            TEXT,
+  budget          NUMERIC(12,2),
+  start_date      DATE,
+  status          TEXT,
+  classification  TEXT NOT NULL DEFAULT 'internal'
+    CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'))
+);
+
 -- Add classification column to existing tables if upgrading from older schema
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -81,13 +117,75 @@ DO $$ BEGIN
       CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'));
   END IF;
 END $$;
+
+CREATE INDEX IF NOT EXISTS idx_orders_user_id
+  ON orders (user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_classification
+  ON orders (classification);
+CREATE INDEX IF NOT EXISTS idx_orders_ordered_at
+  ON orders (ordered_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_preferences_user_id
+  ON preferences (user_id);
+CREATE INDEX IF NOT EXISTS idx_preferences_classification
+  ON preferences (classification);
+CREATE INDEX IF NOT EXISTS idx_preferences_user_category
+  ON preferences (user_id, category);
+
+CREATE INDEX IF NOT EXISTS idx_training_user_id
+  ON training (user_id);
+CREATE INDEX IF NOT EXISTS idx_training_classification
+  ON training (classification);
+CREATE INDEX IF NOT EXISTS idx_training_completed_at
+  ON training (completed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_user_id
+  ON tickets (user_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_classification
+  ON tickets (classification);
+CREATE INDEX IF NOT EXISTS idx_tickets_opened_at
+  ON tickets (opened_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tickets_priority_status
+  ON tickets (priority, status);
+
+CREATE INDEX IF NOT EXISTS idx_projects_user_id
+  ON projects (user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_classification
+  ON projects (classification);
+CREATE INDEX IF NOT EXISTS idx_projects_start_date
+  ON projects (start_date DESC);
+CREATE INDEX IF NOT EXISTS idx_projects_budget
+  ON projects (budget DESC);
+
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS orders_viewer_policy ON orders;
+CREATE POLICY orders_viewer_policy
+  ON orders
+  FOR SELECT
+  TO "viewer-read"
+  USING (classification = 'public');
+
+DROP POLICY IF EXISTS orders_support_policy ON orders;
+CREATE POLICY orders_support_policy
+  ON orders
+  FOR SELECT
+  TO "support-read"
+  USING (classification IN ('public', 'internal'));
+
+DROP POLICY IF EXISTS orders_admin_policy ON orders;
+CREATE POLICY orders_admin_policy
+  ON orders
+  FOR SELECT
+  TO "admin-read"
+  USING (true);
 SQL
 
 # ---------------------------------------------------------------------------
 # Truncate existing data (safe for workshop — preserves schema)
 # ---------------------------------------------------------------------------
 echo "==> Truncating existing data..."
-$PSQL -c "TRUNCATE TABLE preferences, orders, users RESTART IDENTITY CASCADE;" >/dev/null
+$PSQL -c "TRUNCATE TABLE projects, tickets, training, preferences, orders, users RESTART IDENTITY CASCADE;" >/dev/null
 echo "    done."
 
 # ---------------------------------------------------------------------------
@@ -156,5 +254,65 @@ jq -c '.preferences[]' "${DATA_DIR}/activity.json" | while IFS= read -r row; do
   echo "    preference: [user ${user_id}] [${classification}] ${category}"
 done
 
+# ---------------------------------------------------------------------------
+# Seed training
+# ---------------------------------------------------------------------------
+echo "==> Seeding training from data/training.json..."
+jq -c '.[]' "${DATA_DIR}/training.json" | while IFS= read -r row; do
+  user_id=$(echo "$row" | jq -r '.user_id')
+  course=$(echo "$row" | jq -r '.course' | sed "s/'/''/g")
+  provider=$(echo "$row" | jq -r '.provider' | sed "s/'/''/g")
+  completed_at=$(echo "$row" | jq -r '.completed_at')
+  score=$(echo "$row" | jq -r '.score')
+  certified=$(echo "$row" | jq -r '.certified')
+  classification=$(echo "$row" | jq -r '.classification // "internal"')
+
+  $PSQL -c "
+    INSERT INTO training (user_id, course, provider, completed_at, score, certified, classification)
+    VALUES (${user_id}, '${course}', '${provider}', '${completed_at}', ${score}, ${certified}, '${classification}');
+  " >/dev/null
+  echo "    training: [user ${user_id}] [${classification}] ${course}"
+done
+
+# ---------------------------------------------------------------------------
+# Seed tickets
+# ---------------------------------------------------------------------------
+echo "==> Seeding tickets from data/tickets.json..."
+jq -c '.[]' "${DATA_DIR}/tickets.json" | while IFS= read -r row; do
+  user_id=$(echo "$row" | jq -r '.user_id')
+  title=$(echo "$row" | jq -r '.title' | sed "s/'/''/g")
+  system=$(echo "$row" | jq -r '.system' | sed "s/'/''/g")
+  priority=$(echo "$row" | jq -r '.priority')
+  status=$(echo "$row" | jq -r '.status')
+  opened_at=$(echo "$row" | jq -r '.opened_at')
+  classification=$(echo "$row" | jq -r '.classification // "internal"')
+
+  $PSQL -c "
+    INSERT INTO tickets (user_id, title, system, priority, status, opened_at, classification)
+    VALUES (${user_id}, '${title}', '${system}', '${priority}', '${status}', '${opened_at}', '${classification}');
+  " >/dev/null
+  echo "    ticket: [user ${user_id}] [${classification}] ${title}"
+done
+
+# ---------------------------------------------------------------------------
+# Seed projects
+# ---------------------------------------------------------------------------
+echo "==> Seeding projects from data/projects.json..."
+jq -c '.[]' "${DATA_DIR}/projects.json" | while IFS= read -r row; do
+  user_id=$(echo "$row" | jq -r '.user_id')
+  project_name=$(echo "$row" | jq -r '.project_name' | sed "s/'/''/g")
+  role=$(echo "$row" | jq -r '.role' | sed "s/'/''/g")
+  budget=$(echo "$row" | jq -r '.budget')
+  start_date=$(echo "$row" | jq -r '.start_date')
+  status=$(echo "$row" | jq -r '.status')
+  classification=$(echo "$row" | jq -r '.classification // "internal"')
+
+  $PSQL -c "
+    INSERT INTO projects (user_id, project_name, role, budget, start_date, status, classification)
+    VALUES (${user_id}, '${project_name}', '${role}', ${budget}, '${start_date}', '${status}', '${classification}');
+  " >/dev/null
+  echo "    project: [user ${user_id}] [${classification}] ${project_name}"
+done
+
 echo ""
-echo "==> Done. Seeded users, orders, and preferences."
+echo "==> Done. Seeded users, orders, preferences, training, tickets, and projects."

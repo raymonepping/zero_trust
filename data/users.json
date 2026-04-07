@@ -48,5 +48,15 @@
     "city": "Berlin",
     "country": "Germany",
     "joined": "2024-01-20"
+  },
+  {
+    "id": 6,
+    "first_name": "Cojan",
+    "last_name": "van Ballegooijen",
+    "email": "cojan@my.org",
+    "phone": "+31 6 33445566",
+    "city": "Rotterdam",
+    "country": "Netherlands",
+    "joined": "2024-02-12"
   }
 ]

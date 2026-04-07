@@ -108,3 +108,33 @@ memberUid: cojan
 memberUid: alice
 memberUid: bob
 memberUid: charlie
+
+# Group
+dn: cn=admin,ou=groups,dc=my,dc=org
+objectClass: posixGroup
+cn: admin
+gidNumber: 1001
+memberUid: repping
+memberUid: depping
+
+
+# Group
+dn: cn=support,ou=groups,dc=my,dc=org
+objectClass: posixGroup
+cn: support
+gidNumber: 1002
+memberUid: repping
+memberUid: depping
+memberUid: cojan
+
+# Group
+dn: cn=viewer,ou=groups,dc=my,dc=org
+objectClass: posixGroup
+cn: viewer
+gidNumber: 1003
+memberUid: repping
+memberUid: depping
+memberUid: cojan
+memberUid: alice
+memberUid: bob
+memberUid: charlie

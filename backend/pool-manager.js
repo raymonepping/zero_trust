@@ -60,11 +60,12 @@ const DEFAULT_ROLE = "app-role";
 // Resolve which pool to use for a given userContext.
 // Falls back to DEFAULT_ROLE for old connectors without resolveVaultRole.
 function resolveRole(userContext) {
-  if (typeof connector.resolveVaultRole === "function") {
-    return connector.resolveVaultRole(userContext?.role);
+  if (userContext?.role) {
+    return userContext.role;
   }
-  // Old connector: single pool, ignore role
-  return pools.size > 0 ? [...pools.keys()][0] : DEFAULT_ROLE;
+
+  // Legacy connector fallback only
+  return pools.size > 0 ? [...pools.keys()][0] : "viewer-read";
 }
 
 // Normalise startAutoRenewal() return value to Map<vaultRole, credentials>
@@ -248,6 +249,12 @@ async function query(sql, params, userContext) {
   if (!initialized) throw new Error("Pool not initialized");
 
   const vaultRole = resolveRole(userContext);
+  const allowedRoles = new Set(["viewer-read", "support-read", "admin-read"]);
+
+  if (!allowedRoles.has(vaultRole)) {
+    throw new Error(`Invalid vault role: ${vaultRole}`);
+  }
+  
   let state       = getPoolState(vaultRole);
 
   // Lazy pool creation for roles not pre-warmed at startup

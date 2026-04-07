@@ -62,7 +62,7 @@ log.info(`Connector mode: ${MODE}`);
 // All roles fall back to DEFAULT_DB_ROLE (app-role) unless overridden via env.
 // ---------------------------------------------------------------------------
 
-const DEFAULT_DB_ROLE = process.env.VAULT_DB_ROLE || "app-role";
+const DEFAULT_DB_ROLE = process.env.VAULT_DB_ROLE || "viewer-read";
 
 const VAULT_ROLE_MAP = {
   viewer:  process.env.VAULT_DB_ROLE_VIEWER  || DEFAULT_DB_ROLE,
@@ -70,17 +70,36 @@ const VAULT_ROLE_MAP = {
   admin:   process.env.VAULT_DB_ROLE_ADMIN   || DEFAULT_DB_ROLE,
 };
 
-function resolveVaultRole(jwtRole) {
-  if (MODE === "static") return "static";
-  if (!jwtRole) return DEFAULT_DB_ROLE;
+function resolveVaultRole(role) {
+  // No role (anonymous / unauthenticated) — silently use least privilege
+  if (!role) return VAULT_ROLE_MAP.viewer;
 
-  const mapped = VAULT_ROLE_MAP[jwtRole];
-  if (!mapped) {
-    log.warn("Unknown JWT role, falling back to default", { role: jwtRole, fallback: DEFAULT_DB_ROLE });
-    return DEFAULT_DB_ROLE;
+  const canonicalRoles = new Set([
+    "viewer-read",
+    "support-read",
+    "admin-read",
+  ]);
+
+  if (canonicalRoles.has(role)) {
+    return role;
   }
 
-  return mapped;
+  const roleMap = {
+    viewer:  "viewer-read",
+    support: "support-read",
+    admin:   "admin-read",
+  };
+
+  if (roleMap[role]) {
+    return roleMap[role];
+  }
+
+  log.warn("Unknown JWT role, falling back to default", {
+    role,
+    fallback: DEFAULT_DB_ROLE,
+  });
+
+  return DEFAULT_DB_ROLE;
 }
 
 function getKnownRoles() {

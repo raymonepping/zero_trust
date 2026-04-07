@@ -1,5 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 
+// sessionStorage token store — survives Vite HMR module resets.
+// Validates expiry on every read so stale tokens are never sent.
+const getAuthHeaders = () => {
+  const t = sessionStorage.getItem('access_token');
+  if (!t) return {};
+  try {
+    const { exp } = JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (exp * 1000 < Date.now()) { sessionStorage.removeItem('access_token'); return {}; }
+  } catch { return {}; }
+  return { 'Authorization': `Bearer ${t}` };
+};
+
 const STATUS = {
   loading: { label: 'Checking', tone: 'loading', icon: '...' },
   connected: { label: 'Connected', tone: 'connected', icon: 'OK' },
@@ -45,10 +57,75 @@ export default function App() {
   const [askError, setAskError] = useState('');
   const answerRef = useRef(null);
 
+  // Auth state
+  const [token, setToken] = useState(() => sessionStorage.getItem('access_token') || '');
+  const [loginUser, setLoginUser] = useState(() => sessionStorage.getItem('login_user') || '');
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
+  const refreshTimerRef = useRef(null);
+  const storedCredsRef = useRef({ username: '', password: '' });
+
+  const applyToken = (access_token, expires_in, username, password) => {
+    sessionStorage.setItem('access_token', access_token);
+    sessionStorage.setItem('login_user', username);
+    setToken(access_token);
+    storedCredsRef.current = { username, password };
+
+    // Auto-refresh at 80% of TTL
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    const refreshMs = Math.floor(expires_in * 0.8) * 1000;
+    refreshTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storedCredsRef.current),
+        });
+        const data = await res.json();
+        if (res.ok) applyToken(data.access_token, data.expires_in, username, password);
+        else setToken(''); // force re-login if refresh fails
+      } catch {
+        setToken('');
+      }
+    }, refreshMs);
+  };
+
+  const login = async (e) => {
+    e.preventDefault();
+    setLoggingIn(true);
+    setLoginError('');
+    try {
+      const res = await fetch('/api/auth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm),
+      });
+      const data = await res.json();
+      if (!res.ok) { setLoginError(data.error || 'Login failed'); return; }
+      applyToken(data.access_token, data.expires_in, loginForm.username, loginForm.password);
+      setLoginUser(loginForm.username);
+      setLoginForm({ username: '', password: '' });
+    } catch {
+      setLoginError('Identity provider unreachable');
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const logout = () => {
+    sessionStorage.removeItem('access_token');
+    setToken('');
+    setLoginUser('');
+    storedCredsRef.current = { username: '', password: '' };
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    sessionStorage.removeItem('login_user');
+  };
+
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await fetch('/api/health');
+        const res = await fetch('/api/health', { headers: getAuthHeaders() });
         const data = await res.json();
         setDb(data.db === 'connected' ? 'connected' : 'error');
         // Update vault connectivity from health probe (independent of credentials)
@@ -71,7 +148,7 @@ export default function App() {
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await fetch('/api/credentials');
+        const res = await fetch('/api/credentials', { headers: getAuthHeaders() });
         const data = await res.json();
         if (res.ok && data.username) {
           setVault({
@@ -110,7 +187,7 @@ export default function App() {
     try {
       const res = await fetch('/api/ask', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ question: nextQuestion }),
       });
 
@@ -160,6 +237,41 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Login bar */}
+      <div className="login-bar">
+        {token ? (
+          <div className="login-bar-inner">
+            <span className="login-user">Signed in as <strong>{loginUser}</strong></span>
+            <button className="login-bar-btn" onClick={logout}>Sign out</button>
+          </div>
+        ) : (
+          <form className="login-bar-inner" onSubmit={login}>
+            <input
+              className="login-input"
+              type="text"
+              placeholder="Username"
+              value={loginForm.username}
+              onChange={(e) => setLoginForm((f) => ({ ...f, username: e.target.value }))}
+              disabled={loggingIn}
+              autoComplete="username"
+            />
+            <input
+              className="login-input"
+              type="password"
+              placeholder="Password"
+              value={loginForm.password}
+              onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))}
+              disabled={loggingIn}
+              autoComplete="current-password"
+            />
+            <button className="login-bar-btn" type="submit" disabled={loggingIn || !loginForm.username || !loginForm.password}>
+              {loggingIn ? 'Signing in…' : 'Sign in'}
+            </button>
+            {loginError && <span className="login-error">{loginError}</span>}
+          </form>
+        )}
+      </div>
+
       <div className="layout">
         <section className="hero card">
           <div className="eyebrow">Zero Trust Workshop</div>

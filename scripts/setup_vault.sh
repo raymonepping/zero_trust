@@ -1,17 +1,147 @@
 #!/bin/bash
 
+VERIFY_ONLY=false
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./scripts/setup_vault.sh [--verify]
+
+Options:
+  --verify    Check required tooling, environment variables, and Vault access
+              without making any changes.
+EOF
+}
+
+verify_setup() {
+  local status=0
+
+  echo "=== Vault Environment Verification ==="
+
+  if [ -n "${VAULT_ADDR:-}" ]; then
+    echo "✅ VAULT_ADDR is set"
+  else
+    echo "❌ VAULT_ADDR is missing"
+    status=1
+  fi
+
+  if [ -n "${VAULT_TOKEN:-}" ]; then
+    echo "✅ VAULT_TOKEN is set"
+  else
+    echo "❌ VAULT_TOKEN is missing"
+    status=1
+  fi
+
+  if [ -n "${VAULT_NAMESPACE:-}" ]; then
+    echo "✅ VAULT_NAMESPACE is set"
+  else
+    echo "✅ VAULT_NAMESPACE is not set (optional for local/OSS Vault)"
+  fi
+
+  if command -v vault >/dev/null 2>&1; then
+    echo "✅ vault CLI is available"
+  else
+    echo "❌ vault CLI is not installed or not on PATH"
+    status=1
+  fi
+
+  if command -v psql >/dev/null 2>&1; then
+    echo "✅ psql is available"
+  else
+    echo "❌ psql is not installed or not on PATH"
+    status=1
+  fi
+
+  if [ "$status" -ne 0 ]; then
+    echo ""
+    echo "Verification failed before Vault connectivity checks."
+    return "$status"
+  fi
+
+  if vault status >/dev/null 2>&1; then
+    echo "✅ Vault is reachable at ${VAULT_ADDR}"
+  else
+    echo "❌ Vault is not reachable at ${VAULT_ADDR}"
+    status=1
+  fi
+
+  if vault token lookup >/dev/null 2>&1; then
+    echo "✅ VAULT_TOKEN is valid"
+  else
+    echo "❌ VAULT_TOKEN is invalid or lacks access"
+    status=1
+  fi
+
+  echo ""
+  if [ "$status" -eq 0 ]; then
+    echo "✅ Verification complete"
+  else
+    echo "❌ Verification failed"
+  fi
+
+  return "$status"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --verify)
+      VERIFY_ONLY=true
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "❌ Unknown option: $1"
+      echo ""
+      usage
+      exit 1
+      ;;
+  esac
+  shift
+done
+
 # ==========================================
 # Pre-flight Checks
 # ==========================================
+
+if [ "$VERIFY_ONLY" = true ]; then
+  verify_setup
+  exit $?
+fi
 
 # Ensure VAULT_ADDR and VAULT_TOKEN are set in the environment
 if [ -z "$VAULT_ADDR" ] || [ -z "$VAULT_TOKEN" ]; then
   echo "❌ Error: VAULT_ADDR and VAULT_TOKEN environment variables must be set."
   echo "Example:"
-  echo "  export VAULT_ADDR=http://127.0.0.1:8200"
+  echo "  export VAULT_ADDR=https://<cluster>.vault.hashicorp.cloud:8200  # HCP Vault"
+  echo "  export VAULT_ADDR=http://127.0.0.1:8200                         # local Vault"
   echo "  export VAULT_TOKEN=hvs.yourtokenhere"
   exit 1
 fi
+
+# VAULT_NAMESPACE — required for HCP Vault Dedicated (root namespace is 'admin')
+# The Vault CLI reads this env var natively; export it so all vault commands use it.
+if [ -n "$VAULT_NAMESPACE" ]; then
+  export VAULT_NAMESPACE
+  echo "ℹ️  Using Vault namespace: ${VAULT_NAMESPACE}"
+else
+  echo "⚠️  VAULT_NAMESPACE is not set. This is required for HCP Vault Dedicated."
+  echo "    Example:  export VAULT_NAMESPACE=admin"
+  echo "    Continuing without a namespace (suitable for local/OSS Vault only)."
+fi
+
+if ! command -v psql >/dev/null 2>&1; then
+  echo "❌ Error: psql must be installed to prepare PostgreSQL roles for Vault."
+  exit 1
+fi
+
+PGHOST="${PGHOST:-localhost}"
+PGPORT="${PGPORT:-5432}"
+PGDATABASE="${PGDATABASE:-appdb}"
+PGUSER="${PGUSER:-appuser}"
+PGPASSWORD="${PGPASSWORD:-apppassword}"
+export PGPASSWORD
 
 echo "=== Starting Vault Configuration ==="
 
@@ -70,6 +200,34 @@ else
 fi
 
 # ==========================================
+# 3b. PostgreSQL Group Roles for RLS / Grants
+# ==========================================
+
+echo "⏳ Ensuring PostgreSQL group roles exist..."
+psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d "${PGDATABASE}" <<'SQL' >/dev/null
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'viewer-read') THEN
+    CREATE ROLE "viewer-read" NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'support-read') THEN
+    CREATE ROLE "support-read" NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'admin-read') THEN
+    CREATE ROLE "admin-read" NOLOGIN;
+  END IF;
+END $$;
+
+GRANT USAGE ON SCHEMA public TO "viewer-read", "support-read", "admin-read";
+
+GRANT SELECT ON users TO "viewer-read";
+GRANT SELECT ON users, orders, preferences, training, tickets, projects TO "support-read";
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO "admin-read";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "admin-read";
+SQL
+echo "✅ PostgreSQL group roles prepared."
+
+# ==========================================
 # 4. Database Roles
 # ==========================================
 
@@ -89,39 +247,57 @@ fi
 # Schema tables: users, orders, preferences (no products/order_items in this workshop)
 
 if vault read database/roles/viewer-read > /dev/null 2>&1; then
-  echo "✅ Database role 'viewer-read' already exists."
+  echo "✅ Database role 'viewer-read' already exists — updating..."
+  vault write database/roles/viewer-read \
+    db_name=postgres \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' IN ROLE \"viewer-read\"; GRANT SELECT ON users TO \"{{name}}\"; GRANT SELECT ON orders TO \"{{name}}\";" \
+    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public FROM \"{{name}}\"; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    default_ttl="1h" \
+    max_ttl="24h" > /dev/null
 else
   echo "⏳ Configuring database role 'viewer-read'..."
   vault write database/roles/viewer-read \
     db_name=postgres \
-    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT ON users TO \"{{name}}\";" \
-    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' IN ROLE \"viewer-read\"; GRANT SELECT ON users TO \"{{name}}\"; GRANT SELECT ON orders TO \"{{name}}\";" \
+    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public FROM \"{{name}}\"; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
     default_ttl="1h" \
     max_ttl="24h" > /dev/null
   echo "✅ Database role 'viewer-read' configured."
 fi
 
 if vault read database/roles/support-read > /dev/null 2>&1; then
-  echo "✅ Database role 'support-read' already exists."
+  echo "✅ Database role 'support-read' already exists — updating..."
+  vault write database/roles/support-read \
+    db_name=postgres \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' IN ROLE \"support-read\"; GRANT SELECT ON users, orders, preferences, training, tickets, projects TO \"{{name}}\";" \
+    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public FROM \"{{name}}\"; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    default_ttl="1h" \
+    max_ttl="24h" > /dev/null
 else
   echo "⏳ Configuring database role 'support-read'..."
   vault write database/roles/support-read \
     db_name=postgres \
-    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT ON users, orders, preferences TO \"{{name}}\";" \
-    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' IN ROLE \"support-read\"; GRANT SELECT ON users, orders, preferences, training, tickets, projects TO \"{{name}}\";" \
+    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public FROM \"{{name}}\"; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
     default_ttl="1h" \
     max_ttl="24h" > /dev/null
   echo "✅ Database role 'support-read' configured."
 fi
 
 if vault read database/roles/admin-read > /dev/null 2>&1; then
-  echo "✅ Database role 'admin-read' already exists."
+  echo "✅ Database role 'admin-read' already exists — updating..."
+  vault write database/roles/admin-read \
+    db_name=postgres \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' IN ROLE \"admin-read\"; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\"; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\";" \
+    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public FROM \"{{name}}\"; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    default_ttl="1h" \
+    max_ttl="24h" > /dev/null
 else
   echo "⏳ Configuring database role 'admin-read'..."
   vault write database/roles/admin-read \
     db_name=postgres \
-    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\"; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\";" \
-    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' IN ROLE \"admin-read\"; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\"; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\";" \
+    revocation_statements="REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM \"{{name}}\"; REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public FROM \"{{name}}\"; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
     default_ttl="1h" \
     max_ttl="24h" > /dev/null
   echo "✅ Database role 'admin-read' configured."
@@ -252,6 +428,7 @@ echo "✅ User 'repping' mapped."
 KEYCLOAK_ADDR="${KEYCLOAK_ADDR:-http://keycloak:8080}"
 KEYCLOAK_REALM="${KEYCLOAK_REALM:-zero-trust}"
 KEYCLOAK_ISSUER="${KEYCLOAK_ISSUER:-${KEYCLOAK_ADDR}/realms/${KEYCLOAK_REALM}}"
+KEYCLOAK_TOKEN_AUDIENCE="${KEYCLOAK_TOKEN_AUDIENCE:-account}"
 
 if vault auth list | grep -q "^jwt/"; then
   echo "✅ JWT auth method already enabled."
@@ -315,12 +492,19 @@ echo "✅ Policy 'zero-trust-jwt-lab' written."
 # ==========================================
 
 if vault read auth/jwt/role/zero-trust-jwt-lab > /dev/null 2>&1; then
-  echo "✅ JWT role 'zero-trust-jwt-lab' already exists."
+  echo "✅ JWT role 'zero-trust-jwt-lab' already exists — updating settings..."
+  vault write auth/jwt/role/zero-trust-jwt-lab \
+    role_type="jwt" \
+    bound_audiences="${KEYCLOAK_TOKEN_AUDIENCE}" \
+    bound_issuer="${KEYCLOAK_ISSUER}" \
+    user_claim="email" \
+    token_policies="zero-trust-jwt-lab" \
+    token_ttl="15m" > /dev/null
 else
   echo "⏳ Creating JWT role 'zero-trust-jwt-lab'..."
   vault write auth/jwt/role/zero-trust-jwt-lab \
     role_type="jwt" \
-    bound_audiences="backend" \
+    bound_audiences="${KEYCLOAK_TOKEN_AUDIENCE}" \
     bound_issuer="${KEYCLOAK_ISSUER}" \
     user_claim="email" \
     token_policies="zero-trust-jwt-lab" \
@@ -369,19 +553,26 @@ vault read auth/jwt/config | grep -E "jwks_url|bound_issuer"
 
 echo -e "\n=== Setup Complete ==="
 echo ""
+echo "Required env vars for HCP Vault:"
+echo "  VAULT_ADDR             (e.g. https://<cluster>.vault.hashicorp.cloud:8200)"
+echo "  VAULT_TOKEN            (HCP Vault admin/service token)"
+echo "  VAULT_NAMESPACE        (e.g. admin — required for HCP Vault Dedicated)"
+echo ""
 echo "To test LDAP login manually:"
 echo "  vault login -method=ldap username=repping"
 echo ""
-echo "To test JWT login manually (requires Keycloak running on localhost:8082):"
+echo "To test JWT login manually from inside the Docker network:"
 echo "  vault write auth/jwt/login role=zero-trust-jwt-lab \\"
-echo "    jwt=\$(curl -s -X POST \"http://localhost:8082/realms/zero-trust/protocol/openid-connect/token\" \\"
+echo "    jwt=\$(curl -s -X POST \"http://keycloak:8080/realms/zero-trust/protocol/openid-connect/token\" \\"
 echo "      -H \"Content-Type: application/x-www-form-urlencoded\" \\"
 echo "      -d \"grant_type=password&client_id=backend&username=repping&password=password&scope=openid\" \\"
 echo "      --data-urlencode \"client_secret=\${KEYCLOAK_CLIENT_SECRET}\" | jq -r '.access_token')"
 echo ""
+echo "Note: Tokens minted via http://localhost:8082 may carry a different issuer than Vault expects."
 echo "Required env vars for jwt-rotation connector:"
 echo "  KEYCLOAK_ADDR          (default: http://keycloak:8080)"
 echo "  KEYCLOAK_REALM         (default: zero-trust)"
+echo "  KEYCLOAK_TOKEN_AUDIENCE(default: account)"
 echo "  KEYCLOAK_CLIENT_ID     (default: backend)"
 echo "  KEYCLOAK_CLIENT_SECRET"
 echo "  KEYCLOAK_USERNAME"

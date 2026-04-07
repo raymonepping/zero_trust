@@ -2,13 +2,13 @@ FROM node:25.8.2-alpine3.23
 
 WORKDIR /app
 
-COPY package.json .
-RUN npm install
+RUN apk add --no-cache curl
+
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 
 EXPOSE 3000
 
 CMD ["npm", "run", "dev"]
-
-

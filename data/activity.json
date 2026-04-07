@@ -215,6 +215,42 @@
       "price": 28000.00,
       "ordered_at": "2024-06-15",
       "classification": "restricted"
+    },
+    {
+      "user_id": 6,
+      "item": "Framework Laptop 13 – AMD Ryzen 7",
+      "category": "Tech",
+      "quantity": 1,
+      "price": 1749.00,
+      "ordered_at": "2024-02-18",
+      "classification": "internal"
+    },
+    {
+      "user_id": 6,
+      "item": "Figma Professional Annual Subscription",
+      "category": "Software",
+      "quantity": 1,
+      "price": 180.00,
+      "ordered_at": "2024-03-02",
+      "classification": "public"
+    },
+    {
+      "user_id": 6,
+      "item": "Customer Journey Research Panel – Benelux Q2",
+      "category": "Research",
+      "quantity": 1,
+      "price": 4200.00,
+      "ordered_at": "2024-04-09",
+      "classification": "confidential"
+    },
+    {
+      "user_id": 6,
+      "item": "Privileged Access Review Workshop – External Advisory",
+      "category": "Professional Services",
+      "quantity": 1,
+      "price": 9600.00,
+      "ordered_at": "2024-05-21",
+      "classification": "restricted"
     }
   ],
   "preferences": [
@@ -408,6 +444,48 @@
       "user_id": 5,
       "category": "Salary Band",
       "value": "L4 – Senior Engineer",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 6,
+      "category": "Music",
+      "value": "Drum & Bass, Ambient, Dutch Hip Hop",
+      "classification": "public"
+    },
+    {
+      "user_id": 6,
+      "category": "Sports",
+      "value": "Padel, Cycling, Indoor Climbing",
+      "classification": "public"
+    },
+    {
+      "user_id": 6,
+      "category": "Cuisine",
+      "value": "Indonesian, Italian, Korean",
+      "classification": "public"
+    },
+    {
+      "user_id": 6,
+      "category": "Tech Interests",
+      "value": "Identity, UX Engineering, Secure Developer Platforms",
+      "classification": "internal"
+    },
+    {
+      "user_id": 6,
+      "category": "Travel",
+      "value": "Portugal, Singapore, Denmark",
+      "classification": "public"
+    },
+    {
+      "user_id": 6,
+      "category": "Project",
+      "value": "Internal IAM Modernisation Pilot",
+      "classification": "confidential"
+    },
+    {
+      "user_id": 6,
+      "category": "Salary Band",
+      "value": "L5 – Lead Engineer",
       "classification": "restricted"
     }
   ]

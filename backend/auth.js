@@ -25,6 +25,7 @@
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWKS_URL   = process.env.JWKS_URL;
 const JWT_ISSUER = process.env.JWT_ISSUER || undefined;
+const log = require("./logger");
 
 let verifyJwt;
 
@@ -41,14 +42,14 @@ async function getVerifier() {
     // RS256 / JWKS — production pattern (Keycloak, Auth0, etc.)
     const jwks = jose.createRemoteJWKSet(new URL(JWKS_URL));
     verifyJwt = async (token) => {
-      const { payload } = await jose.jwtVerify(token, jwks, { issuer: JWT_ISSUER });
+      const { payload } = await jose.jwtVerify(token, jwks, { issuer: JWT_ISSUER, clockTolerance: 60 });
       return payload;
     };
   } else if (JWT_SECRET) {
     // HS256 — development and testing
     const secret = new TextEncoder().encode(JWT_SECRET);
     verifyJwt = async (token) => {
-      const { payload } = await jose.jwtVerify(token, secret, { issuer: JWT_ISSUER });
+      const { payload } = await jose.jwtVerify(token, secret, { issuer: JWT_ISSUER, clockTolerance: 60 });
       return payload;
     };
   } else {
@@ -101,6 +102,7 @@ async function authenticate(req, res, next) {
     const payload = await verify(authHeader.slice(7));
     const role    = extractRole(payload);
 
+    req.user = payload;
     req.userContext = {
       sub:   payload.sub,
       role,
@@ -121,6 +123,7 @@ async function authenticate(req, res, next) {
 // ---------------------------------------------------------------------------
 
 async function authenticateOptional(req, res, next) {
+
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -132,13 +135,28 @@ async function authenticateOptional(req, res, next) {
     const verify  = await getVerifier();
     const payload = await verify(authHeader.slice(7));
     const role    = extractRole(payload);
+    
+    log.debug("JWT payload:", payload);
 
+    req.user = payload;
     req.userContext = {
       sub:   payload.sub,
       role,
       email: payload.email || payload.preferred_username || undefined,
     };
-  } catch {
+  } catch (err) {
+    try {
+      const raw = JSON.parse(Buffer.from(authHeader.slice(7).split('.')[1], 'base64url').toString());
+      const now = Math.floor(Date.now() / 1000);
+      if (raw.exp && raw.exp < now) {
+        log.debug("JWT expired, ignoring", { skew: raw.exp - now, jti: raw.jti?.slice(-8) });
+      } else {
+        log.warn("JWT verification failed", { error: err.message, jti: raw.jti?.slice(-8) });
+      }
+    } catch {
+      log.warn("JWT verification failed", { error: err.message });
+    }
+    req.user        = undefined;
     req.userContext = undefined;
   }
 
