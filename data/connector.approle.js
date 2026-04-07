@@ -1,7 +1,7 @@
 /**
  * connector.js — AppRole credential provider
  *
- * Phase 3: authenticates to Vault using AppRole (role_id + secret_id),
+ * Phase 4: authenticates to Vault using AppRole (role_id + secret_id),
  * exchanges them for a short-lived Vault token, then fetches dynamic
  * PostgreSQL credentials from the database secrets engine.
  *

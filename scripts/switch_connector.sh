@@ -185,13 +185,20 @@ replace_connector() {
   fi
 
   local url="${BASE_URL}/connector.${mode}.js"
+  local local_file="./data/connector.${mode}.js"
 
-  info "Fetching ${C_YELLOW}${mode}${C_RESET} connector from GitHub..."
-  dim "  ${url}"
+  if [[ -f "${local_file}" ]]; then
+    info "Using local ${C_YELLOW}${mode}${C_RESET} connector..."
+    dim "  ${local_file}"
+    cp "${local_file}" "${TARGET_FILE}"
+  else
+    info "Fetching ${C_YELLOW}${mode}${C_RESET} connector from GitHub..."
+    dim "  ${url}"
 
-  if ! curl -fsSL "${url}" -o "${TARGET_FILE}"; then
-    err "Failed to fetch connector — check the URL or your network connection"
-    exit 1
+    if ! curl -fsSL "${url}" -o "${TARGET_FILE}"; then
+      err "Failed to fetch connector — check the URL or your network connection"
+      exit 1
+    fi
   fi
 
   echo
