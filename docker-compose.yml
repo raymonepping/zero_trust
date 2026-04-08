@@ -61,6 +61,13 @@ services:
     networks:
       - net-data
       - net-egress
+    deploy:
+      resources:
+        limits:
+          cpus: "3.0"
+          memory: 4G
+        reservations:
+          memory: 512M
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
       interval: 15s
