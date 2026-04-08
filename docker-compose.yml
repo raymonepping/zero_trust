@@ -70,12 +70,13 @@ services:
   backend:
     # Built locally and bind-mounted on purpose so workshop participants can
     # swap backend files such as connector.js and immediately change auth flows.
-    image: repping/zero-trust-backend:1.8.10
+    image: repping/zero-trust-backend:1.8.11
     container_name: zero_trust_backend
     env_file:
       - .env
     volumes:
       - ./backend:/app
+      - /app/node_modules # prevents bind-mount from shadowing container's node_modules
     ports:
       - "3000:3000"
     depends_on:
@@ -96,13 +97,13 @@ services:
   frontend:
     # Built locally and bind-mounted so the running UI always matches the
     # checked-out workshop code instead of a prebuilt image revision.
-    image: repping/zero-trust-frontend:1.8.10
+    image: repping/zero-trust-frontend:1.8.11
     container_name: zero_trust_frontend
     environment:
       VITE_API_URL: http://backend:3000
     volumes:
       - ./frontend:/app
-      - /app/node_modules
+      - /app/node_modules # prevents bind-mount from shadowing container's node_modules
     ports:
       - "5173:5173"
     depends_on:
