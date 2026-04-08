@@ -112,11 +112,12 @@ services:
     environment:
       VITE_API_URL: http://backend:3000
       VITE_PORT: ${VITE_PORT:-5173}
+      VITE_HOST_PORT: ${VITE_HOST_PORT:-8088}
     volumes:
       - ./frontend:/app
       - /app/node_modules # prevents bind-mount from shadowing container's node_modules
     ports:
-      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
+      - "${VITE_HOST_PORT:-8088}:${VITE_PORT:-5173}"
     depends_on:
       backend:
         condition: service_healthy

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
+    "dev": "sh -c 'echo \"Frontend host URL: http://localhost:${VITE_HOST_PORT:-${VITE_PORT:-5173}}/\"; vite --host'",
     "build": "vite build",
     "preview": "vite preview"
   },
