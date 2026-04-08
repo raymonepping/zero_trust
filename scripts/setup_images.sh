@@ -5,7 +5,12 @@ set -euo pipefail
 VERSION="${1:-1.0.0}"
 DOCKER_USER="${2:-repping}"
 
-COMPOSE_FILE="$(cd "$(dirname "$0")/.." && pwd)/docker-compose.yml"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+COMPOSE_FILE="${SCRIPT_DIR}/../docker-compose.yml"
+
+echo "Resetting connector.js to 'wired' (static-config) for clean workshop start"
+"${SCRIPT_DIR}/switch_connector.sh" --replace-with wired
+echo
 
 IMAGES=(
   "zero-trust-backend:./backend"
