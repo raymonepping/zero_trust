@@ -16,11 +16,13 @@ for item in "${IMAGES[@]}"; do
 
   FULL_IMAGE="${DOCKER_USER}/${NAME}:${VERSION}"
 
-  echo "Building ${FULL_IMAGE}"
-  docker build --load -t "${FULL_IMAGE}" "${PATHCTX}"
-
-  echo "Pushing ${FULL_IMAGE}"
-  docker push "${FULL_IMAGE}"
+  echo "Building and pushing ${FULL_IMAGE}"
+  docker build \
+    --no-cache \
+    --platform linux/amd64,linux/arm64 \
+    --push \
+    -t "${FULL_IMAGE}" \
+    "${PATHCTX}"
 
   echo "Done ${FULL_IMAGE}"
   echo
