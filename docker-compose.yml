@@ -78,7 +78,7 @@ services:
   backend:
     # Built locally and bind-mounted on purpose so workshop participants can
     # swap backend files such as connector.js and immediately change auth flows.
-    image: repping/zero-trust-backend:1.8.12
+    image: repping/zero-trust-backend:1.8.14
     container_name: zero_trust_backend
     env_file:
       - .env
@@ -107,15 +107,16 @@ services:
   frontend:
     # Built locally and bind-mounted so the running UI always matches the
     # checked-out workshop code instead of a prebuilt image revision.
-    image: repping/zero-trust-frontend:1.8.12
+    image: repping/zero-trust-frontend:1.8.14
     container_name: zero_trust_frontend
     environment:
       VITE_API_URL: http://backend:3000
+      VITE_PORT: ${VITE_PORT:-5173}
     volumes:
       - ./frontend:/app
       - /app/node_modules # prevents bind-mount from shadowing container's node_modules
     ports:
-      - "5173:5173"
+      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
     depends_on:
       backend:
         condition: service_healthy
@@ -123,7 +124,7 @@ services:
       - net-frontend
       - net-backend
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:5173"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:${VITE_PORT:-5173}"]
       interval: 10s
       timeout: 5s
       retries: 5
