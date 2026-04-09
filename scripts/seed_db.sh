@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS orders (
   quantity        INT NOT NULL DEFAULT 1,
   price           NUMERIC(10,2),
   ordered_at      DATE,
+  status          TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')),
   classification  TEXT NOT NULL DEFAULT 'internal'
     CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'))
 );
@@ -100,7 +102,7 @@ CREATE TABLE IF NOT EXISTS projects (
     CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'))
 );
 
--- Add classification column to existing tables if upgrading from older schema
+-- Add columns to existing tables if upgrading from older schema
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -108,6 +110,13 @@ DO $$ BEGIN
   ) THEN
     ALTER TABLE orders ADD COLUMN classification TEXT NOT NULL DEFAULT 'internal'
       CHECK (classification IN ('public', 'internal', 'confidential', 'restricted'));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='orders' AND column_name='status'
+  ) THEN
+    ALTER TABLE orders ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled'));
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -179,6 +188,14 @@ CREATE POLICY orders_admin_policy
   FOR SELECT
   TO "admin-read"
   USING (true);
+
+DROP POLICY IF EXISTS orders_support_write_policy ON orders;
+CREATE POLICY orders_support_write_policy
+  ON orders
+  FOR ALL
+  TO "support-write"
+  USING (classification IN ('public', 'internal'))
+  WITH CHECK (classification IN ('public', 'internal'));
 SQL
 
 # ---------------------------------------------------------------------------
@@ -227,13 +244,14 @@ jq -c '.orders[]' "${DATA_DIR}/activity.json" | while IFS= read -r row; do
   quantity=$(echo "$row" | jq -r '.quantity')
   price=$(echo "$row" | jq -r '.price')
   ordered_at=$(echo "$row" | jq -r '.ordered_at')
+  status=$(echo "$row" | jq -r '.status // "pending"')
   classification=$(echo "$row" | jq -r '.classification // "internal"')
 
   $PSQL -c "
-    INSERT INTO orders (user_id, item, category, quantity, price, ordered_at, classification)
-    VALUES (${user_id}, '${item}', '${category}', ${quantity}, ${price}, '${ordered_at}', '${classification}');
+    INSERT INTO orders (user_id, item, category, quantity, price, ordered_at, status, classification)
+    VALUES (${user_id}, '${item}', '${category}', ${quantity}, ${price}, '${ordered_at}', '${status}', '${classification}');
   " >/dev/null
-  echo "    order: [user ${user_id}] [${classification}] ${item}"
+  echo "    order: [user ${user_id}] [${classification}] [${status}] ${item}"
 done
 
 # ---------------------------------------------------------------------------

@@ -597,6 +597,65 @@ module.exports = {
         };
       },
 
+  // Write-scoped credential for CIBA-gated actions.
+  // Not in VAULT_ROLE_MAP. Not pre-warmed. Not auto-renewed.
+  // Each call fetches a fresh short-lived credential (5m TTL).
+  // Caller is responsible for revoking the lease after use.
+  getWriteCredentials: MODE === "vault"
+    ? async function getWriteCredentials(userContext) {
+        const vaultRole = "support-write";
+
+        log.info("Fetching write credential (CIBA)", {
+          role: vaultRole,
+          for:  userContext?.sub || "unknown",
+        });
+
+        const token = await getVaultToken();
+        const path  = `database/creds/${vaultRole}`;
+
+        const res = await fetch(`${VAULT_ADDR}/v1/${path}`, {
+          headers: { "X-Vault-Token": token },
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Write creds request failed ${res.status}: ${text}`);
+        }
+
+        const json                   = await res.json();
+        const { username, password } = json.data;
+        const leaseId                = json.lease_id;
+        const leaseDuration          = json.lease_duration;
+
+        log.info("Write credential issued", {
+          role:     vaultRole,
+          user:     username,
+          ttl:      leaseDuration,
+          lease_id: leaseId,
+          for:      userContext?.sub || "unknown",
+        });
+
+        return {
+          host:      DB_HOST,
+          port:      DB_PORT,
+          database:  DB_NAME,
+          user:      username,
+          password,
+          source:    "vault-jwt-dynamic",
+          path,
+          vaultRole,
+          ttl:       leaseDuration,
+          leaseId,
+          issuedAt:  Date.now(),
+          expiresAt: Date.now() + leaseDuration * 1000,
+          issuedFor: userContext?.sub || "unknown",
+        };
+      }
+    : async function getWriteCredentials() {
+        log.warn("getWriteCredentials called in static mode — no write scoping applied");
+        return staticCredentials;
+      },
+
   revokeLease: MODE === "vault"
     ? revokeLease
     : async function revokeLease() {},

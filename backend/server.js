@@ -2,11 +2,14 @@
 
 const express     = require("express");
 const morgan      = require("morgan");
+
 const poolManager = require("./pool-manager");
 const connector   = require("./connector");
 const log         = require("./logger");
+
 const { authenticateOptional } = require("./auth");
 const { resolveVaultRole } = require("./roleResolver");
+const cibaRoutes = require("./ciba-routes");
 
 const app         = express();
 const PORT        = process.env.PORT || 3000;
@@ -203,7 +206,7 @@ app.get("/orders", authenticateOptional, async (req, res) => {
 
     const { rows } = await poolManager.query(
       `SELECT o.id, u.first_name, u.last_name, o.item, o.category,
-              o.quantity, o.price, o.ordered_at, o.classification
+              o.quantity, o.price, o.ordered_at, o.status, o.classification
        FROM orders o
        JOIN users u ON u.id = o.user_id
        ORDER BY o.ordered_at DESC`,
@@ -643,6 +646,14 @@ Answer:`;
 const KEYCLOAK_ADDR      = process.env.KEYCLOAK_ADDR      || "http://keycloak:8080";
 const KEYCLOAK_REALM     = process.env.KEYCLOAK_REALM     || "zero-trust";
 const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || "backend";
+
+
+// ---------------------------------------------------------------------------
+// CIBA — Delegated authority routes (dormant until called)
+// ---------------------------------------------------------------------------
+app.use("/ciba", cibaRoutes);
+
+
 
 app.post("/auth/token", async (req, res) => {
   const { username, password } = req.body || {};
