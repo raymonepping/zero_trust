@@ -2,9 +2,12 @@
 
 set -euo pipefail
 
-VERSION="2.3.0"
+VERSION="2.4.0"
 
-TARGET_FILE="./backend/connector.js"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+TARGET_FILE="${REPO_ROOT}/backend/connector.js"
 BASE_URL="https://raw.githubusercontent.com/raymonepping/zero_trust/refs/heads/main/data"
 CONTAINER_NAME="zero_trust_backend"
 
@@ -42,9 +45,10 @@ declare -A CONNECTOR_DESC=(
   [approle-rotation]="AppRole + dynamic DB credentials + proactive rotation at 75% TTL — Phase 4"
   [jwt-rotation]="Keycloak JWT → Vault token → dynamic DB credentials + proactive rotation — Phase 5"
   [jwt-roles]="Keycloak JWT → Vault token → role-scoped dynamic DB credentials + rotation — Phase 6 (most secure)"
+  [jwt-ciba]="Keycloak JWT → Vault role-scoped credentials + CIBA-gated write credentials — Phase 7"
 )
 
-VALID_TYPES=(wired env vault dynamic approle approle-dynamic approle-rotation jwt-rotation jwt-roles)
+VALID_TYPES=(wired env vault dynamic approle approle-dynamic approle-rotation jwt-rotation jwt-roles jwt-ciba)
 
 is_valid_type() {
   local t="$1"
@@ -79,7 +83,7 @@ ${C_BOLD}COMMANDS${C_RESET}
 ${C_BOLD}CONNECTOR TYPES${C_RESET}"
 
   for t in "${VALID_TYPES[@]}"; do
-    printf "  ${C_YELLOW}%-12s${C_RESET} %s\n" "$t" "${CONNECTOR_DESC[$t]}"
+    printf "  ${C_YELLOW}%-17s${C_RESET} %s\n" "$t" "${CONNECTOR_DESC[$t]}"
   done
 
   echo -e "
@@ -104,6 +108,9 @@ ${C_BOLD}EXAMPLES${C_RESET}
 
   ${C_DIM}# Keycloak JWT → Vault → role-scoped dynamic creds + rotation (Phase 6 — most secure)${C_RESET}
   ${C_YELLOW}./switch_connector.sh --replace-with jwt-roles${C_RESET}
+
+  ${C_DIM}# Final phase: role-scoped reads + CIBA-approved write credentials (Phase 7)${C_RESET}
+  ${C_YELLOW}./switch_connector.sh --replace-with jwt-ciba${C_RESET}
 
 ${C_BOLD}PREREQUISITES${C_RESET}
   ${C_DIM}•${C_RESET} Docker / Podman with Compose running
@@ -132,7 +139,7 @@ show_version() {
 list_versions() {
   echo -e "\n${C_BOLD}Available connector types:${C_RESET}\n"
   for t in "${VALID_TYPES[@]}"; do
-    printf "  ${C_YELLOW}%-12s${C_RESET} %s\n" "$t" "${CONNECTOR_DESC[$t]}"
+    printf "  ${C_YELLOW}%-17s${C_RESET} %s\n" "$t" "${CONNECTOR_DESC[$t]}"
   done
   echo
 }
@@ -147,7 +154,9 @@ show_current() {
   # approle-rotation shares the vault-approle-dynamic source string but also
   # exports startAutoRenewal — check for that first to distinguish the two.
   local detected="unknown"
-  if grep -q '"vault-jwt-dynamic"\|'"'"'vault-jwt-dynamic'"'" "${TARGET_FILE}" 2>/dev/null \
+  if grep -q 'support-write\|getWriteCredentials' "${TARGET_FILE}" 2>/dev/null; then
+    detected="jwt-ciba"
+  elif grep -q '"vault-jwt-dynamic"\|'"'"'vault-jwt-dynamic'"'" "${TARGET_FILE}" 2>/dev/null \
      && grep -q 'resolveVaultRole\|VAULT_ROLE_MAP' "${TARGET_FILE}" 2>/dev/null; then
     detected="jwt-roles"
   elif grep -q '"vault-jwt-dynamic"\|'"'"'vault-jwt-dynamic'"'" "${TARGET_FILE}" 2>/dev/null; then
@@ -185,7 +194,7 @@ replace_connector() {
   fi
 
   local url="${BASE_URL}/connector.${mode}.js"
-  local local_file="./data/connector.${mode}.js"
+  local local_file="${REPO_ROOT}/data/connector.${mode}.js"
 
   if [[ -f "${local_file}" ]]; then
     info "Using local ${C_YELLOW}${mode}${C_RESET} connector..."
@@ -212,7 +221,7 @@ replace_connector() {
   echo
   info "Restarting backend container ${C_CYAN}${CONTAINER_NAME}${C_RESET}..."
 
-  if ! docker compose restart backend 2>/dev/null; then
+  if ! (cd "${REPO_ROOT}" && docker compose restart backend) 2>/dev/null; then
     err "docker compose restart failed — is the stack running?"
     exit 1
   fi
