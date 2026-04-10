@@ -77,6 +77,12 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [docs/readme_openapi.md](./docs/readme_openapi.md)  
   OpenAPI exposure control and docs endpoint behavior.
 
+- [docs/readme_verify_ldap.md](./docs/readme_verify_ldap.md)  
+  LDAP sanity checks for host tooling, admin bind, directory branches, and port publishing.
+
+- [docs/readme_verify_keycloak.md](./docs/readme_verify_keycloak.md)  
+  Keycloak sanity checks for host reachability, admin CLI availability, and bootstrap admin auth.
+
 - [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)  
   How the LDAP directory is populated and used.
 
@@ -125,7 +131,7 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [docs/readme_seed_db.md](./docs/readme_seed_db.md)  
   Database seeding and workshop data reset behavior.
 
-- [docs/readme_verify_postgres.md](./docs/readme_verify_postgres.md)  
+- [docs/readme_verify_postgresql.md](./docs/readme_verify_postgresql.md)  
   PostgreSQL volume, container, role, and table verification workflow.
 
 - [docs/readme_routes.md](./docs/readme_routes.md)  
@@ -146,11 +152,13 @@ If you are a student running the labs for the first time:
 7. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
 8. [docs/readme_docker.md](./docs/readme_docker.md)
 9. [docs/readme_seed_db.md](./docs/readme_seed_db.md)
-10. [docs/readme_verify_postgres.md](./docs/readme_verify_postgres.md)
-11. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
-12. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
-13. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
-14. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
+10. [docs/readme_verify_postgresql.md](./docs/readme_verify_postgresql.md)
+11. [docs/readme_verify_ldap.md](./docs/readme_verify_ldap.md)
+12. [docs/readme_verify_keycloak.md](./docs/readme_verify_keycloak.md)
+13. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
+14. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
+15. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
+16. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
 
 If you are operating or extending the workshop:
 
@@ -163,7 +171,9 @@ If you are operating or extending the workshop:
 7. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
 8. [docs/readme_docker.md](./docs/readme_docker.md)
 9. [docs/readme_podman.md](./docs/readme_podman.md)
-10. [docs/readme_verify_postgres.md](./docs/readme_verify_postgres.md)
-11. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
-12. [docs/readme_images_build.md](./docs/readme_images_build.md)
-13. [docs/readme_images_purge.md](./docs/readme_images_purge.md)
+10. [docs/readme_verify_postgresql.md](./docs/readme_verify_postgresql.md)
+11. [docs/readme_verify_ldap.md](./docs/readme_verify_ldap.md)
+12. [docs/readme_verify_keycloak.md](./docs/readme_verify_keycloak.md)
+13. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
+14. [docs/readme_images_build.md](./docs/readme_images_build.md)
+15. [docs/readme_images_purge.md](./docs/readme_images_purge.md)
