@@ -432,6 +432,8 @@ Reads remain role-scoped, while writes require explicit approval through CIBA.
 | LDAP Admin | `http://localhost:8081` | OpenLDAP admin UI |
 | Keycloak | `http://localhost:8082` | Identity provider admin UI |
 | Ollama | `http://localhost:11434` | Local LLM endpoint |
+| OpenAPI JSON | `http://localhost:3000/openapi.json` | Exposed when `EXPOSE_ROUTES=true` |
+| Swagger UI | `http://localhost:3000/docs` | Exposed when `EXPOSE_ROUTES=true` |
 | PostgreSQL | `localhost:5432` | DB port |
 | OpenLDAP | `localhost:1389` | LDAP |
 
@@ -499,6 +501,8 @@ The root README is the lab entry point. The detailed subsystem docs live under `
 Key docs:
 
 - [index.md](./index.md)
+- [docs/readme_environment_settings.md](./docs/readme_environment_settings.md)
+- [docs/readme_openapi.md](./docs/readme_openapi.md)
 - [docs/readme_frontend.md](./docs/readme_frontend.md)
 - [docs/readme_backend.md](./docs/readme_backend.md)
 - [docs/readme_routes.md](./docs/readme_routes.md)

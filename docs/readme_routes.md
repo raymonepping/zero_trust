@@ -64,6 +64,7 @@ The current script covers these route areas:
 - optional-auth data routes
 - authenticated data routes
 - credential metadata route
+- OpenAPI and Swagger UI docs routes
 - streamed `/ask` route
 - lease health and manual rotation routes
 - CIBA diagnostics
@@ -309,6 +310,24 @@ This is one of the most useful workshop routes because it shows:
 - pool status and rotation count
 
 The password field is intentionally masked.
+
+### `GET /openapi.json`
+
+Returns the raw OpenAPI definition for the backend.
+
+Notes:
+
+- exposed only when `EXPOSE_ROUTES=true`
+- useful for tooling, validation, and alternative API renderers
+
+### `GET /docs`
+
+Returns the Swagger UI page backed by the OpenAPI definition.
+
+Notes:
+
+- exposed only when `EXPOSE_ROUTES=true`
+- intended as a visible API reference for the workshop
 
 ### `GET /health/lease`
 

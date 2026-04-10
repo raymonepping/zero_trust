@@ -1154,6 +1154,49 @@
         }
       }
     },
+    "/openapi.json": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Return the raw OpenAPI definition",
+        "description": "Exposed only when route documentation is enabled.",
+        "responses": {
+          "200": {
+            "description": "OpenAPI JSON document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Render Swagger UI for the backend API",
+        "description": "Exposed only when route documentation is enabled.",
+        "responses": {
+          "200": {
+            "description": "Swagger UI HTML page.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ciba/request": {
       "post": {
         "tags": [

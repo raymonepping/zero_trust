@@ -616,6 +616,7 @@ Receives the delegation request from Keycloak and stores it in memory for pollin
 - `GET /ciba/pending`
 - `POST /ciba/approve`
 - `GET /ciba/status/:sessionId`
+- `GET /ciba/diagnostics`
 
 These drive the approval UI in the frontend.
 

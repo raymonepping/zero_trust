@@ -51,6 +51,12 @@ It exists so the stack can:
 
 In early workshop phases this file provides direct database or Vault inputs. In later phases it also feeds Keycloak and JWT-related flows.
 
+A safe template also exists at:
+
+- [.env.example](../.env.example)
+
+Use that file as the commit-safe starting point for new environments, then copy it to `.env` and replace the placeholders locally.
+
 ---
 
 ## How The Root .env Is Used
