@@ -639,6 +639,43 @@ This sequence addresses the most common Podman failure modes in workshop setups:
 
 It is a blunt recovery method, but it is effective.
 
+### Sanity check with a simple NGINX container
+
+If you are not sure whether the workshop is broken or Podman itself is broken, test the runtime with a trivial web server first.
+
+Run:
+
+```bash
+podman rm -f podman-connectivity-test 2>/dev/null || true
+podman run -d --name podman-connectivity-test -p 8089:80 docker.io/library/nginx:alpine
+curl -I http://localhost:8089
+podman ps --format "table {{.Names}}\t{{.Ports}}"
+```
+
+What you want to see:
+
+- the container is running
+- port `8089` is published
+- `curl` returns an HTTP response such as `200 OK`
+
+If this fails, the problem is below the workshop stack. Look first at:
+
+- Podman machine health
+- host-to-machine port forwarding
+- local port conflicts
+- Podman networking or rootless port publishing
+
+Clean up afterward:
+
+```bash
+podman rm -f podman-connectivity-test
+```
+
+Why this is useful:
+
+- it removes Vault, Keycloak, Compose, and bind mounts from the equation
+- it proves whether basic container port publishing works through the Podman machine
+
 ---
 
 ## Troubleshooting

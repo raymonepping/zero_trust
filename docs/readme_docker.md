@@ -607,6 +607,43 @@ This resolves the most common setup failures:
 
 It is a pragmatic first-line recovery method before doing anything more invasive.
 
+### Sanity check with a simple NGINX container
+
+If you are not sure whether the workshop is broken or Docker itself is broken, test the container runtime with a trivial web server first.
+
+Run:
+
+```bash
+docker rm -f docker-connectivity-test 2>/dev/null || true
+docker run -d --name docker-connectivity-test -p 8089:80 nginx:alpine
+curl -I http://localhost:8089
+docker ps --format "table {{.Names}}\t{{.Ports}}"
+```
+
+What you want to see:
+
+- the container is running
+- port `8089` is published
+- `curl` returns an HTTP response such as `200 OK`
+
+If this fails, the problem is below the workshop stack. Look first at:
+
+- Docker daemon health
+- host firewall rules
+- local port conflicts
+- Docker Desktop or Engine networking
+
+Clean up afterward:
+
+```bash
+docker rm -f docker-connectivity-test
+```
+
+Why this is useful:
+
+- it removes Vault, Keycloak, Compose, and bind mounts from the equation
+- it proves whether basic container port publishing works on the host
+
 ---
 
 ## Troubleshooting
