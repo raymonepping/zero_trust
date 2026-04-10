@@ -99,7 +99,7 @@ async function getDynamicCredentials() {
     database: 'appdb',
     user:     username,
     password: password,
-    source:   'vault-dynamic',
+    source:   'vault-dynamic-agent',
     path:     `database/creds/${VAULT_DB_ROLE}`,
     ttl:      lease_duration,
     issuedAt: now,

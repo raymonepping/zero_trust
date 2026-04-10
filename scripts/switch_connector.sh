@@ -40,6 +40,7 @@ declare -A CONNECTOR_DESC=(
   [env]="Credentials from environment variables — Phase 0 / no Vault"
   [vault]="Static credentials from Vault KV v2 — Phase 1"
   [dynamic]="Short-lived credentials from Vault database engine — Phase 2"
+  [agent-dynamic]="Vault Agent backed dynamic credentials — Phase 2b"
   [approle]="AppRole login → scoped token → static KV credentials — Phase 3a"
   [approle-dynamic]="AppRole login → scoped token → dynamic DB credentials — Phase 3b (full zero trust)"
   [approle-rotation]="AppRole + dynamic DB credentials + proactive rotation at 75% TTL — Phase 4"
@@ -48,7 +49,7 @@ declare -A CONNECTOR_DESC=(
   [jwt-ciba]="Keycloak JWT → Vault role-scoped credentials + CIBA-gated write credentials — Phase 7"
 )
 
-VALID_TYPES=(wired env vault dynamic approle approle-dynamic approle-rotation jwt-rotation jwt-roles jwt-ciba)
+VALID_TYPES=(wired env vault dynamic agent-dynamic approle approle-dynamic approle-rotation jwt-rotation jwt-roles jwt-ciba)
 
 is_valid_type() {
   local t="$1"
@@ -99,6 +100,9 @@ ${C_BOLD}EXAMPLES${C_RESET}
 
   ${C_DIM}# Enable Vault dynamic database credentials${C_RESET}
   ${C_YELLOW}./switch_connector.sh --replace-with dynamic${C_RESET}
+
+  ${C_DIM}# Enable Vault Agent backed dynamic credentials${C_RESET}
+  ${C_YELLOW}./switch_connector.sh --replace-with agent-dynamic${C_RESET}
 
   ${C_DIM}# AppRole + dynamic creds + proactive rotation (Phase 4)${C_RESET}
   ${C_YELLOW}./switch_connector.sh --replace-with approle-rotation${C_RESET}
@@ -156,6 +160,8 @@ show_current() {
   local detected="unknown"
   if grep -q 'support-write\|getWriteCredentials' "${TARGET_FILE}" 2>/dev/null; then
     detected="jwt-ciba"
+  elif grep -q 'Vault Agent file-watch mode\|VAULT_AGENT_CREDS_FILE' "${TARGET_FILE}" 2>/dev/null; then
+    detected="agent-dynamic"
   elif grep -q '"vault-jwt-dynamic"\|'"'"'vault-jwt-dynamic'"'" "${TARGET_FILE}" 2>/dev/null \
      && grep -q 'resolveVaultRole\|VAULT_ROLE_MAP' "${TARGET_FILE}" 2>/dev/null; then
     detected="jwt-roles"
