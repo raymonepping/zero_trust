@@ -1,87 +1,232 @@
 # Zero Trust Workshop
 
-A hands-on workshop demonstrating progressive credential security patterns using HashiCorp Vault, PostgreSQL, Keycloak, OpenLDAP, Ollama, and a modern React frontend — all orchestrated with Docker Compose.
+Hands-on labs for moving an application from hardcoded credentials to short-lived, role-scoped, user-aware, and approval-gated access patterns using:
 
-**Core principle:** applications should never hold long-lived credentials. Credentials are retrieved at runtime from Vault — and as the workshop progresses, become dynamically generated, short-lived, automatically rotated, and backed by federated identity.
+- PostgreSQL
+- HashiCorp Vault
+- Vault Agent
+- OpenLDAP
+- Keycloak
+- a React frontend
+- an Express backend
+- Docker Compose
+
+The workshop is built around one core idea:
+
+> applications should not hold long-lived secrets, and elevated access should be narrow, auditable, and short-lived.
+
+This repository is not just a demo app. It is a progression of security models that you can switch between live by swapping the backend connector.
+
+For the detailed script and subsystem docs, see [index.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/index.md).
+
+---
+
+## Table Of Contents
+
+- [What This Workshop Teaches](#what-this-workshop-teaches)
+- [Architecture](#architecture)
+- [Services](#services)
+- [Recommended Lab Path](#recommended-lab-path)
+- [Supported Connector Modes](#supported-connector-modes)
+- [Getting Started](#getting-started)
+- [Phase 0: Start The Lab Without Vault](#phase-0-start-the-lab-without-vault)
+- [Progressing Through The Labs](#progressing-through-the-labs)
+- [Key URLs](#key-urls)
+- [Useful Commands](#useful-commands)
+- [Repository Docs](#repository-docs)
+- [Operational Notes](#operational-notes)
+
+---
+
+## What This Workshop Teaches
+
+The labs walk students and engineers through these ideas in a concrete way:
+
+- why hardcoded credentials are dangerous
+- why `.env` files are only a partial improvement
+- how Vault centralizes secret storage
+- how AppRole replaces root-token style access with scoped machine identity
+- how dynamic database credentials remove the static password problem
+- how proactive renewal improves resilience
+- how Vault Agent moves credential management out of application code
+- how JWT auth flows end-user identity into Vault
+- how role-scoped credentials enforce least privilege
+- how CIBA adds explicit approval for high-impact writes
+
+The same backend and frontend stay in place throughout. What changes is the credential strategy.
 
 ---
 
 ## Architecture
 
+The diagram below reflects the current `docker-compose.yml` relationships, network boundaries, and shared volumes.
+
+```text
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  Browser                                                                     ║
+╚══════════════════════════════════════╦═══════════════════════════════════════╝
+                                       │  HTTP  :8088
+                    ┌──────────────────▼──────────────────┐
+                    │         Frontend  (React/Vite)      │  net-frontend
+                    │              port 8088              │
+                    └──────────────────┬──────────────────┘
+                                       │  /api/*  :3000
+          ╔════════════════════════════╪════════════════════════════╗
+          ║  net-backend               │                            ║
+          ║           ┌────────────────▼────────────────┐           ║
+          ║           │        Backend  (Express)       │           ║
+          ║           │           port  3000            │           ║
+          ║           └──┬──────┬──────┬──────┬─────────┘           ║
+          ╚══════════════╪══════╪══════╪══════╪═════════════════════╝
+                         │      │      │      │
+          ╔══════════════╪══════╪══════╪══════╪═════════════════════════════════════╗
+          ║  net-data    │      │      │      │                                     ║
+          ║              │      │      │      │ reads from shared volume            ║
+          ║    ┌─────────▼─┐  ┌─▼────┐ │  ┌───▼──────────────────────────────────┐  ║
+          ║    │ PostgreSQL│  │Vault │ │  │  vault-agent-secrets  (Docker vol.)  │  ║
+          ║    │  (db)     │  │:8200 │ │  └──────────────────────────────────────┘  ║
+          ║    │  port5432 │  └──▲───┘ │            ▲ writes                        ║
+          ║    └───────────┘     │     │  ┌─────────┴────────┐                      ║
+          ║                      │     │  │   Vault Agent    │                      ║
+          ║                      │     │  │  (sidecar)       │──► Vault :8200       ║
+          ║                      │     │  └──────────────────┘                      ║
+          ║                      │     │                                            ║
+          ║                      │  ┌──▼───────┐   ┌──────────────┐                 ║
+          ║                      │  │ Keycloak │   │  LDAP Admin  │                 ║
+          ║                      │  │  :8082   │   │  :8081       │                 ║
+          ║                      │  └────┬─────┘   └───────┬──────┘                 ║
+          ║                      │       │  CIBA callback  │                        ║
+          ║                      │       │  /ciba/request  │                        ║
+          ║                      │       ▼                 ▼                        ║
+          ║                      │  ┌──────────────────────────┐                    ║
+          ║                      │  │     OpenLDAP  :1389      │                    ║
+          ║                      │  └──────────────────────────┘                    ║
+          ║                      │                                                  ║
+          ║              ┌───────▼──────┐                                           ║
+          ║              │    Ollama    │                                           ║
+          ║              │   :11434     │                                           ║
+          ║              └───────┬──────┘                                           ║
+          ╚══════════════════════╪══════════════════════════════════════════════════╝
+                                 │  model pulls only
+          ╔══════════════════════╪══════╗
+          ║  net-egress          │      ║
+          ║              ┌───────▼────┐ ║
+          ║              │  Internet  │ ║
+          ║              └────────────┘ ║
+          ╚═════════════════════════════╝
 ```
-┌──────────────┐   /api/*    ┌──────────────┐    SQL     ┌──────────────┐
-│   Frontend   │ ──────────► │   Backend    │ ─────────► │  PostgreSQL  │
-│ React / Vite │             │  Express.js  │            │   (appdb)    │
-└──────────────┘             └──────┬───────┘            └──────────────┘
-                                    │
-                   ┌────────────────┼────────────────┐
-                   │                │                │
-            ┌──────▼──────┐  ┌──────▼──────┐  ┌──────▼─────┐
-            │    Vault    │  │   Ollama    │  │  Keycloak  │
-            │  Enterprise │  │  llama3.2   │  │   (OIDC)   │
-            └──────┬──────┘  └─────────────┘  └──────┬─────┘
-                   │                                 │
-            ┌──────▼──────┐                   ┌──────▼──────┐
-            │  PostgreSQL │                   │  OpenLDAP   │
-            │ DB Engine   │                   │   (users)   │
-            └─────────────┘                   └─────────────┘
-```
 
-### Network Isolation
+### Network isolation
 
-| Network | Services | External |
-| --- | --- | --- |
-| `net-frontend` | frontend, backend | No |
-| `net-backend` | backend, frontend | No |
-| `net-data` | backend, db, vault, ollama, ldap, keycloak | No |
-| `net-egress` | ollama | Yes (model pulls only) |
+Four Docker networks enforce strict traffic boundaries. Services can only talk to services on a shared network — there is no cross-network routing.
 
-The frontend cannot reach the database or Vault directly — all access goes through the backend.
+| Network | Services | Purpose |
+| ------- | -------- | ------- |
+| `net-frontend` | `frontend` | Isolates the UI from everything except the browser |
+| `net-backend` | `frontend`, `backend` | The only path from frontend to the API |
+| `net-data` | `backend`, `db`, `vault`, `vault-agent`, `ollama`, `openldap`, `ldap-admin`, `keycloak` | All internal service communication |
+| `net-egress` | `ollama` | Allows model pulls from the internet; all other services are isolated |
+
+**Key consequences of this model:**
+
+- The **frontend cannot reach PostgreSQL, Vault, OpenLDAP, or Keycloak directly** — all data flows through the backend
+- The **backend is the only application boundary** — it owns authentication, authorisation, and credential management
+- **Keycloak authenticates users against OpenLDAP**, and reaches back to the backend via `/ciba/request` for CIBA approval delegation
+- **Vault Agent and backend share credentials through a Docker named volume** (`vault-agent-secrets`), not an HTTP API — the backend reads a rendered JSON file, never calling Vault directly in the `agent-dynamic` connector phase
 
 ---
 
 ## Services
 
-| Service | Image | Port | Description |
-| --- | --- | --- | --- |
-| `frontend` | `repping/zero-trust-frontend` | 5173 | React + Vite UI |
-| `backend` | `repping/zero-trust-backend` | 3000 | Express.js API |
-| `db` | `postgres:17.4` | 5432 | PostgreSQL database |
-| `vault` | `hashicorp/vault-enterprise:1.21.3-ent` | 8200 | Vault Enterprise |
-| `ollama` | custom | 11434 | Local LLM (llama3.2) |
-| `openldap` | `osixia/openldap:1.5.0` | 1389 | LDAP directory |
-| `ldap-admin` | `osixia/phpldapadmin` | 8081 | LDAP web UI |
-| `keycloak` | `quay.io/keycloak/keycloak` | 8082 | OIDC identity provider |
+| Service | Image / Build | Port | Role |
+| ------- | ------------- | ---- | ---- |
+| `frontend` | `repping/zero-trust-frontend` | `8088` | React/Vite UI — student interface and CIBA approval flow |
+| `backend` | `repping/zero-trust-backend` | `3000` | Express API — connector execution, JWT/CIBA logic, Vault integration |
+| `db` | `./db` (Postgres 17) | `5432` | PostgreSQL with RLS policies and dynamic Vault roles |
+| `vault` | `hashicorp/vault-enterprise` | `8200` | Secrets engine, auth methods, dynamic credentials, audit log |
+| `vault-agent` | `hashicorp/vault-enterprise` | — | Sidecar: authenticates to Vault, renders `db-creds.json` to shared volume |
+| `openldap` | `osixia/openldap` | `1389` | User directory — source of truth for identities and group membership |
+| `ldap-admin` | `osixia/phpldapadmin` | `8081` | Web UI for browsing the LDAP directory |
+| `keycloak` | `quay.io/keycloak/keycloak` | `8082` | OIDC provider — JWT issuance, role mapping, CIBA backchannel auth |
+| `ollama` | `./ollama` | `11434` | Local LLM (llama3.2 + nomic-embed-text) for `/api/ask` |
+
+### Persistent volumes
+
+| Volume | Used by | Contains |
+| ------ | ------- | -------- |
+| `db_data` | `db` | PostgreSQL data directory |
+| `vault_data` | `vault` | Raft storage (secrets, config, audit) |
+| `vault-agent-secrets` | `vault-agent`, `backend` | Agent-rendered `db-creds.json` (shared via volume mount) |
+| `ollama_data` | `ollama` | Downloaded model weights |
+| `openldap-data` | `openldap` | LDAP directory entries |
+| `openldap-config` | `openldap` | LDAP server configuration |
+| `keycloak_data` | `keycloak` | Realm config, client registrations, user data |
 
 ---
 
-## Workshop Phases
+## Recommended Lab Path
 
-The workshop progresses through phases of increasing credential security. Each phase is represented by a swappable `connector.js` — switch between them with `./scripts/switch_connector.sh`.
+The current repository supports more than one path through the connectors. The recommended lab order for students is:
 
-| Phase | Connector | Auth chain | Data access |
-| --- | --- | --- | --- |
-| 0a | `wired` | Hardcoded credentials in code | Public only |
-| 0b | `env` | Credentials from env variables | Public only |
-| 1 | `vault` | Vault KV v2 static secret | Public + Internal |
-| 2 | `dynamic` | Vault database engine — short-lived creds | Public + Internal |
-| 3a | `approle` | AppRole → scoped token → KV creds | Public + Internal + Confidential |
-| 3b | `approle-dynamic` | AppRole → scoped token → dynamic creds | Public + Internal + Confidential |
-| 4 | `approle-rotation` | AppRole + dynamic creds + proactive rotation at 75% TTL | Public + Internal + Confidential |
-| 5 | `jwt-rotation` | Keycloak JWT → Vault token → dynamic creds + rotation | All (including Restricted) |
+1. `wired`
+2. `env`
+3. `vault`
+4. `approle`
+5. `approle-dynamic`
+6. `approle-rotation`
+7. `agent-dynamic`
+8. `jwt-rotation`
+9. `jwt-roles`
+10. `jwt-ciba`
 
-### Data Classification
+This is the path described in the workshop connector documentation and is the right teaching progression for the labs.
 
-Every order and preference row carries a classification label:
+### Validation note
 
-| Level | Label | Visible from phase |
-| --- | --- | --- |
-| 0 | `public` | Any connector |
-| 1 | `internal` | Vault KV or higher |
-| 2 | `confidential` | AppRole or higher |
-| 3 | `restricted` | JWT rotation only |
+The `switch_connector.sh` script currently supports one additional connector mode:
 
-The backend enforces this at query time — the LLM never receives data it isn't allowed to see.
+- `dynamic`
+
+That mode is available and valid, but the recommended lab path above intentionally skips it to keep the student journey tighter:
+
+- `vault` demonstrates central secret storage
+- `approle` demonstrates scoped machine identity
+- `approle-dynamic` then demonstrates dynamic credentials on top of AppRole
+
+So:
+
+- **supported by script:** 11 connector modes
+- **recommended lab journey:** 10 phases
+
+---
+
+## Supported Connector Modes
+
+As validated from `scripts/switch_connector.sh`, the currently supported connector values are:
+
+- `wired`
+- `env`
+- `vault`
+- `dynamic`
+- `agent-dynamic`
+- `approle`
+- `approle-dynamic`
+- `approle-rotation`
+- `jwt-rotation`
+- `jwt-roles`
+- `jwt-ciba`
+
+To list them live:
+
+```bash
+./scripts/switch_connector.sh --list
+```
+
+To see the active mode:
+
+```bash
+./scripts/switch_connector.sh --current
+```
 
 ---
 
@@ -90,292 +235,303 @@ The backend enforces this at query time — the LLM never receives data it isn't
 ### Prerequisites
 
 - Docker or Podman with Compose
-- `vault` CLI
+- `curl`
 - `jq`
-- A Vault Enterprise license file at `./vault/config/vault.hclic`
+- Vault Enterprise license file present at `vault/config/vault.hclic`
 
-### First-time setup
+### Clone the repository
 
 ```bash
-# 1. Create the audit log directory (Vault writes here)
-mkdir -p ./vault/audit
-chmod 777 ./vault/audit
+git clone https://github.com/raymonepping/zero_trust.git
+cd zero_trust
+```
 
-# 2. Copy the env template and fill in your values
-cp .env.example .env   # or edit .env directly
+### Prepare local configuration
 
-# 3. Start all services
-docker compose up -d
+Create the audit directory and your local environment file if needed:
 
-# 4. Unseal Vault (reads keys from vault/init.txt)
-./scripts/unseal_vault.sh
+```bash
+mkdir -p vault/audit
+cp .env.example .env
+```
 
-# 5. Configure Vault (idempotent — safe to re-run)
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=<root-token-from-vault/init.txt>
-./scripts/setup_vault.sh
+Do not commit `.env`, `vault/init.txt`, or any locally generated secrets.
 
-# 6. Seed the database
+---
+
+## Phase 0: Start The Lab Without Vault
+
+The first launch should come up in the baseline `wired` configuration.
+
+### 1. Start the foundational services
+
+Start the core services required before backend and frontend:
+
+```bash
+docker compose up -d db openldap ldap-admin keycloak
+```
+
+### 2. Load the workshop data
+
+Seed PostgreSQL:
+
+```bash
 ./scripts/seed_db.sh
-
-# 7. Bootstrap LDAP users
-LDAP_HOST=localhost LDAP_PORT=1389 ./scripts/setup_ldap.sh
 ```
 
-### Subsequent starts
+Bootstrap LDAP:
 
 ```bash
-docker compose up -d
+./scripts/setup_ldap.sh
+```
+
+Configure Keycloak:
+
+```bash
+./scripts/setup_keycloak.sh
+```
+
+### 3. Reset connector to `wired`
+
+Do this explicitly so the lab starts from the right baseline:
+
+```bash
+./scripts/switch_connector.sh --replace-with wired
+```
+
+### 4. Start backend and frontend
+
+```bash
+docker compose up -d backend frontend
+```
+
+At this point the UI should come up using the `wired` connector and the first lab can begin.
+
+---
+
+## Progressing Through The Labs
+
+The recommended progression is below. Each step builds on the previous one.
+
+### 1. `wired`
+
+```bash
+./scripts/switch_connector.sh --replace-with wired
+```
+
+Hardcoded credentials in source code. This is the intentionally bad starting point.
+
+### 2. `env`
+
+```bash
+./scripts/switch_connector.sh --replace-with env
+```
+
+Credentials moved out of source and into environment variables.
+
+### 3. `vault`
+
+Before switching:
+
+```bash
+docker compose up -d vault
 ./scripts/unseal_vault.sh
+./scripts/setup_vault.sh
 ```
 
----
-
-## Configuration — `.env`
-
-All backend environment variables live in the root `.env` file (gitignored). Docker Compose loads it via `env_file: .env` on the backend service.
-
-```ini
-# Backend
-NODE_ENV=development
-PORT=3000
-
-# Database
-DATABASE_URL=postgres://appuser:apppassword@db:5432/appdb
-
-# Ollama
-OLLAMA_ADDR=http://ollama:11434
-
-# Vault
-VAULT_ADDR=http://vault:8200
-VAULT_TOKEN=hvs.xxxx
-VAULT_MODE=dynamic
-VAULT_DB_ROLE=app-role
-VAULT_KV_PATH=secret/data/postgres
-
-# AppRole (phases 3a / 3b / 4)
-VAULT_ROLE_ID=<role-id-from-setup_vault.sh>
-VAULT_SECRET_ID=<secret-id-from-setup_vault.sh>
-
-# Keycloak JWT (phase 5)
-KEYCLOAK_ADDR=http://keycloak:8080
-KEYCLOAK_REALM=zero-trust
-KEYCLOAK_CLIENT_ID=backend
-KEYCLOAK_CLIENT_SECRET=<client-secret-from-keycloak>
-KEYCLOAK_USERNAME=repping
-KEYCLOAK_PASSWORD=password
-VAULT_JWT_ROLE=zero-trust-jwt-lab
-```
-
-> `VAULT_ROLE_ID` and `VAULT_SECRET_ID` are printed by `./scripts/setup_vault.sh` at the end of each run.
-
----
-
-## Switching Connector Phases
+Then:
 
 ```bash
-# Show current phase
-./scripts/switch_connector.sh --current
+./scripts/switch_connector.sh --replace-with vault
+```
 
-# List all available phases
-./scripts/switch_connector.sh --list
+Static database credentials are now stored in Vault KV instead of code or `.env`.
 
-# Switch to a phase (fetches from GitHub, restarts backend)
+### 4. `approle`
+
+```bash
+./scripts/switch_connector.sh --replace-with approle
+```
+
+The backend stops using broad Vault access and authenticates through AppRole instead.
+
+### 5. `approle-dynamic`
+
+```bash
+./scripts/switch_connector.sh --replace-with approle-dynamic
+```
+
+Static DB secrets are replaced with dynamic database users issued by Vault.
+
+### 6. `approle-rotation`
+
+```bash
+./scripts/switch_connector.sh --replace-with approle-rotation
+```
+
+Dynamic DB credentials are proactively renewed before expiry.
+
+### 7. `agent-dynamic`
+
+Start Vault Agent:
+
+```bash
+docker compose up -d vault-agent
+```
+
+Then switch:
+
+```bash
+./scripts/switch_connector.sh --replace-with agent-dynamic
+```
+
+The backend now reads rendered credentials from the shared Vault Agent secrets volume instead of calling Vault directly.
+
+### 8. `jwt-rotation`
+
+```bash
 ./scripts/switch_connector.sh --replace-with jwt-rotation
 ```
 
-Connectors are fetched from `https://raw.githubusercontent.com/raymonepping/zero_trust/refs/heads/main/data/`.
+The backend authenticates to Vault using the end user’s Keycloak JWT.
+
+### 9. `jwt-roles`
+
+```bash
+./scripts/switch_connector.sh --replace-with jwt-roles
+```
+
+Vault DB roles and Postgres access are now tied to the JWT role claim.
+
+### 10. `jwt-ciba`
+
+Before switching, complete the CIBA setup:
+
+```bash
+./scripts/setup_ciba.sh
+./scripts/setup_ciba_keycloak.sh
+```
+
+Then:
+
+```bash
+./scripts/switch_connector.sh --replace-with jwt-ciba
+```
+
+Reads remain role-scoped, while writes require explicit approval through CIBA.
 
 ---
 
-## API Reference
+## Key URLs
 
-| Method | Path | Description |
+| Component | URL | Notes |
 | --- | --- | --- |
-| `GET` | `/` | Health check — DB connectivity |
-| `GET` | `/health` | Extended health — DB + Vault status, sealed state |
-| `GET` | `/users` | All users |
-| `GET` | `/orders` | Orders filtered by current trust level |
-| `GET` | `/preferences` | Preferences filtered by current trust level |
-| `GET` | `/credentials` | Active credential metadata — source, trust level, classification access, lease info |
-| `POST` | `/ask` | Natural language query — context filtered by trust level, streamed Ollama response |
+| Frontend | `http://localhost:8088` | Main student UI |
+| Backend | `http://localhost:3000` | API |
+| Vault | `http://localhost:8200` | Vault UI / API |
+| LDAP Admin | `http://localhost:8081` | OpenLDAP admin UI |
+| Keycloak | `http://localhost:8082` | Identity provider admin UI |
+| Ollama | `http://localhost:11434` | Local LLM endpoint |
+| PostgreSQL | `localhost:5432` | DB port |
+| OpenLDAP | `localhost:1389` | LDAP |
 
-### `/health` response
-
-```json
-{
-  "status": "ok",
-  "db": "connected",
-  "vault": {
-    "status": "active",
-    "ok": true,
-    "sealed": false,
-    "version": "1.21.3+ent"
-  }
-}
-```
-
-`status` is `"degraded"` when Vault is down but the DB is still reachable — the app continues serving public data.
-
-### `/credentials` response
-
-```json
-{
-  "source": "vault-jwt-dynamic",
-  "trust_level": 3,
-  "allowed_classifications": ["public", "internal", "confidential", "restricted"],
-  "username": "v-jwt-repp-app-role-xxxx",
-  "ttl": 3600,
-  "leaseId": "database/creds/app-role/xxxx",
-  "lease": { "status": "active", "remainingSec": 3418 },
-  "rotations": 1
-}
-```
+Note: frontend host port comes from `VITE_HOST_PORT` and defaults to `8088` in the current Compose file.
 
 ---
 
-## Database Schema
+## Useful Commands
 
-```sql
-users        -- id, first_name, last_name, email, phone, city, country, joined
-orders       -- id, user_id, item, category, quantity, price, ordered_at, classification
-preferences  -- id, user_id, category, value, classification
-```
-
-### Seeding
+Start the full stack:
 
 ```bash
-./scripts/seed_db.sh
+docker compose up -d
 ```
 
-Reads from `./data/users.json` (5 users) and `./data/activity.json` (24 orders, 32 preferences). Truncates and re-seeds on every run — safe for workshop use.
-
----
-
-## Vault Setup
-
-`./scripts/setup_vault.sh` configures everything idempotently:
-
-1. KV v2 secrets engine + `secret/postgres` static secret
-2. Database secrets engine + PostgreSQL connection + `app-role` role (1h TTL)
-3. AppRole auth method + `app-policy` + `zero-trust-app` role
-4. LDAP auth method + connection to OpenLDAP + `ldap-user` policy + user mapping
-5. JWT auth method + Keycloak JWKS config + `zero-trust-jwt-lab` role
-6. File audit device at `/vault/audit/vault-audit.log`
-
-Re-running the script is safe — existing resources are skipped, policies are always rewritten with the correct content.
+Start only the early-lab services:
 
 ```bash
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=<root-token>
-./scripts/setup_vault.sh
+docker compose up -d db openldap ldap-admin keycloak backend frontend
 ```
 
-### Vault Audit Log
+Show current connector:
 
 ```bash
-# Live tail — summarised format
+./scripts/switch_connector.sh --current
+```
+
+Inspect running containers:
+
+```bash
+./scripts/inspect_containers.sh
+```
+
+Tail the Vault audit log:
+
+```bash
 ./scripts/audit_log.sh
+```
 
-# Filter by path
-./scripts/audit_log.sh --path database/creds
+Rotate the Vault audit log:
 
-# Filter by operation
-./scripts/audit_log.sh --op write
-
-# Last 20 entries, no follow
-./scripts/audit_log.sh --lines 20 --no-follow
-
-# Rotate log (moves current file, sends SIGHUP to Vault)
+```bash
 ./scripts/rotate_vault_audit.sh
-./scripts/rotate_vault_audit.sh --keep 14
 ```
 
----
-
-## LDAP Directory
-
-OpenLDAP is pre-populated via `./scripts/setup_ldap.sh` from `./ldap/bootstrap.ldif`.
-
-| User | Password | Group |
-| --- | --- | --- |
-| `repping` | `password` | developers |
-| `depping` | `password` | developers |
-| `alice` | `alice123` | developers |
-| `bob` | `bob123` | developers |
-| `charlie` | `charlie123` | developers |
-
-**Admin UI:** [http://localhost:8081](http://localhost:8081) (login: `cn=admin,dc=my,dc=org` / `admin`)
-
----
-
-## Keycloak (OIDC / JWT)
-
-Keycloak is used in Phase 5 to issue JWTs that Vault validates before granting a scoped token.
-
-**Admin UI:** [http://localhost:8082](http://localhost:8082) (login: `admin` / `admin`)
-
-**Realm:** `zero-trust`  
-**Client:** `backend`
-
-The LDAP federation is configured in Keycloak's user federation settings pointing to `ldap://openldap:389`. After syncing, all LDAP users can authenticate through Keycloak.
-
-### Test JWT login
+Build and publish workshop images:
 
 ```bash
-# Get a Keycloak JWT
-TOKEN=$(curl -s -X POST "http://localhost:8082/realms/zero-trust/protocol/openid-connect/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=password&client_id=backend&username=repping&password=password&scope=openid" \
-  -d "client_secret=${KEYCLOAK_CLIENT_SECRET}" | jq -r '.access_token')
-
-# Exchange for a Vault token
-vault write auth/jwt/login role=zero-trust-jwt-lab jwt="${TOKEN}"
+./scripts/setup_images.sh 1.8.20
 ```
 
----
-
-## Publishing Images
+Clean up old local workshop image tags:
 
 ```bash
-# Build and push both images (default version: 1.0.0)
-./scripts/setup_images.sh
-
-# Custom version
-./scripts/setup_images.sh 1.2.0
-
-# Custom version and registry user
-./scripts/setup_images.sh 1.2.0 myuser
+./scripts/purge_images.sh
+./scripts/purge_images.sh --apply
 ```
 
 ---
 
-## Scripts Reference
+## Repository Docs
 
-| Script | Description |
-| --- | --- |
-| `./scripts/unseal_vault.sh` | Unseals Vault using Shamir keys from `vault/init.txt` |
-| `./scripts/setup_vault.sh` | Configures all Vault engines, auth methods, policies, and audit |
-| `./scripts/setup_ldap.sh` | Bootstraps LDAP directory from `ldap/bootstrap.ldif` |
-| `./scripts/seed_db.sh` | Seeds users, orders, and preferences from `./data/*.json` |
-| `./scripts/switch_connector.sh` | Swaps `backend/connector.js` with a phase-specific version and restarts the backend |
-| `./scripts/setup_images.sh` | Builds and pushes Docker images for backend and frontend |
-| `./scripts/audit_log.sh` | Tails and filters the Vault audit log |
-| `./scripts/rotate_vault_audit.sh` | Rotates the Vault audit log file via SIGHUP |
+The root README is the lab entry point. The detailed subsystem docs live under `./docs`.
 
----
+Key docs:
 
-## Security Notes
-
-- `vault/init.txt`, `vault/config/vault.hclic`, `vault/data/`, `vault/audit/`, and `.env` are all gitignored
-- TLS is disabled for local development — enable it before any shared or production deployment
-- `log_raw=false` on the audit device — secrets are HMAC'd, not logged in plaintext
-- The backend HTTP 503s only when the DB is down — Vault unavailability degrades to `public` data access without crashing
-- Dynamic credentials are auto-expired by Vault — no manual revocation needed
-- The frontend cannot communicate with Vault, the DB, or LDAP directly (internal Docker networks)
+- [index.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/index.md)
+- [readme_switch_connector.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_switch_connector.md)
+- [readme_setup_vault.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_vault.md)
+- [readme_vault_unseal.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_vault_unseal.md)
+- [readme_setup_ldap.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_ldap.md)
+- [readme_setup_keycloak.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_keycloak.md)
+- [readme_setup_ciba_vault.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_ciba_vault.md)
+- [readme_setup_ciba_keycloak.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_ciba_keycloak.md)
+- [readme_seed_db.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_seed_db.md)
+- [readme_inspect_containers.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_inspect_containers.md)
+- [readme_images_build.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_images_build.md)
+- [readme_images_purge.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_images_purge.md)
 
 ---
 
-## License
+## Operational Notes
 
-[GPLv3](LICENSE)
+- `frontend` and `backend` are bind-mounted in Compose so local code changes are reflected in the running containers
+- `backend/connector.js` is intentionally swappable as the main workshop mechanic
+- `vault-agent` is optional and only needed for the agent-based phase
+- `jwt-ciba` is the most advanced mode and requires both Vault and Keycloak CIBA setup
+- the frontend includes a delegated write UI for the CIBA phase
+- the backend exposes CIBA routes only when the active connector supports them
+- `ollama` is only on the egress-enabled network for model pulls
+
+### Security hygiene
+
+- never commit `.env`
+- never commit `vault/init.txt`
+- never commit real Vault tokens, client secrets, or generated credentials in docs
+- treat any accidentally exposed root token as compromised and rotate or revoke it
+
+---
+
+## Final note
+
+If you want the most accurate connector-specific details, use this root README for orientation and then read [readme_switch_connector.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_switch_connector.md) for the full per-phase explanation.
