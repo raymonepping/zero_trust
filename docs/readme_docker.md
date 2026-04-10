@@ -646,7 +646,7 @@ Why this is useful:
 
 ---
 
-## Troubleshooting
+## Troubleshooting Docker
 
 ### Port already in use
 

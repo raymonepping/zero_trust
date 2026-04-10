@@ -678,7 +678,7 @@ Why this is useful:
 
 ---
 
-## Troubleshooting
+## Troubleshooting Podman
 
 ### Podman machine is too small
 
