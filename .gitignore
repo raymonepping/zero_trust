@@ -116,6 +116,7 @@ docker-compose.override.yml
 ########################################
 .env
 .env.*
+!.env.example
 
 ########################################
 # 🔐 Vault Secrets
@@ -139,4 +140,3 @@ vault-agent/config/secret_id
 *.log
 crash.log
 justfile
-
