@@ -44,6 +44,32 @@ services:
       timeout: 5s
       retries: 5
 
+  vault-agent:
+    image: hashicorp/vault-enterprise:1.21.4-ent
+    container_name: zero_trust_vault_agent
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    entrypoint: ["vault", "agent", "-config=/vault/config/agent.hcl"]
+    environment:
+      VAULT_ADDR: ${VAULT_ADDR:-http://vault:8200}
+      VAULT_LICENSE_PATH: "/vault/config/vault.hclic"
+    volumes:
+      - ./vault-agent/config:/vault/config:ro
+      - ./vault/config/vault.hclic:/vault/config/vault.hclic:ro
+      - vault-agent-secrets:/vault/secrets
+    networks:
+      - net-data
+    depends_on:
+      vault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /vault/secrets/db-creds.json"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
   ollama:
     build:
       context: ./ollama
@@ -83,10 +109,12 @@ services:
     env_file:
       - .env
     environment:
+      VAULT_AGENT_CREDS_FILE: /vault/secrets/db-creds.json    
       CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./backend:/app
       - /app/node_modules # prevents bind-mount from shadowing container's node_modules
+      - vault-agent-secrets:/vault/secrets:ro
     ports:
       - "3000:3000"
     depends_on:
@@ -209,6 +237,7 @@ networks:
 volumes:
   db_data:
   vault_data:
+  vault-agent-secrets:
   ollama_data:
   openldap-data:
   openldap-config:

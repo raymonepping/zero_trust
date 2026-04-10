@@ -93,7 +93,9 @@ function normalizeLeaseInfo(result) {
 // Shims for lifecycle functions absent from early-stage workshop connectors
 const connectorStartAutoRenewal = typeof connector.startAutoRenewal === "function"
   ? () => connector.startAutoRenewal()
-  : async () => connector.getCredentials();
+  : typeof connector.start === "function"
+    ? () => connector.start()
+    : async () => connector.getCredentials();
 
 const connectorOnRotation = typeof connector.onRotation === "function"
   ? (cb) => connector.onRotation(cb)

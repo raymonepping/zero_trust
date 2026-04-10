@@ -124,6 +124,8 @@ vault/init.txt
 vault/config/vault.hclic
 vault/data/
 vault/audit/
+vault-agent/config/role_id
+vault-agent/config/secret_id
 
 ########################################
 # 🛠️ Terraform

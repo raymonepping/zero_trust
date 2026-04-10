@@ -25,6 +25,8 @@ const SUGGESTIONS = [
   'Who has the highest security clearance?',
 ];
 
+const ORDER_STATUSES = ['processing', 'shipped', 'delivered', 'cancelled'];
+
 // Maps source → visual metadata
 const VAULT_SOURCE_META = {
   'static-config':         { label: 'Hardcoded',         badge: 'STATIC',          cls: 'vault-badge-static' },
@@ -48,13 +50,14 @@ export default function App() {
   const [db, setDb] = useState('loading');
   const [vault, setVault] = useState({
     status: 'loading', source: null, path: null, username: null,
-    trust_level: null, allowed_classifications: [],
+    trust_level: null, allowed_classifications: [], capabilities: {},
   });
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [lastQuestion, setLastQuestion] = useState('');
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState('');
+  const [copyState, setCopyState] = useState('idle');
   const answerRef = useRef(null);
 
   // Auth state
@@ -65,6 +68,14 @@ export default function App() {
   const [loggingIn, setLoggingIn] = useState(false);
   const refreshTimerRef = useRef(null);
   const storedCredsRef = useRef({ username: '', password: '' });
+
+  // CIBA write flow
+  const [cibaForm, setCibaForm] = useState({ orderId: '1', newStatus: 'shipped' });
+  const [cibaSession, setCibaSession] = useState(null);
+  const [cibaPending, setCibaPending] = useState(null);
+  const [cibaMessage, setCibaMessage] = useState('Request write access for one order status change.');
+  const [cibaError, setCibaError] = useState('');
+  const [cibaBusy, setCibaBusy] = useState(false);
 
   const applyToken = (access_token, expires_in, username, password) => {
     sessionStorage.setItem('access_token', access_token);
@@ -169,12 +180,13 @@ export default function App() {
             username: data.username,
             trust_level: data.trust_level ?? 0,
             allowed_classifications: data.allowed_classifications ?? ['public'],
+            capabilities: data.capabilities ?? {},
           });
         } else {
-          setVault({ status: 'error', source: null, path: null, username: null, trust_level: null, allowed_classifications: [] });
+          setVault({ status: 'error', source: null, path: null, username: null, trust_level: null, allowed_classifications: [], capabilities: {} });
         }
       } catch {
-        setVault({ status: 'error', source: null, path: null, username: null, trust_level: null, allowed_classifications: [] });
+        setVault({ status: 'error', source: null, path: null, username: null, trust_level: null, allowed_classifications: [], capabilities: {} });
       }
     };
     check();
@@ -188,11 +200,131 @@ export default function App() {
     }
   }, [answer]);
 
+  const fetchCibaPending = async () => {
+    const res = await fetch('/api/ciba/pending', { headers: getAuthHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load pending CIBA requests');
+    if (!Array.isArray(data)) throw new Error('Pending CIBA response was not a list');
+    const match = cibaSession?.action
+      ? data.find((request) => request.bindingMessage === cibaSession.action)
+      : data[0];
+    setCibaPending(match || null);
+    return match || null;
+  };
+
+  const executeCibaWrite = async (session) => {
+    const res = await fetch(`/api/ciba/orders/${session.orderId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ newStatus: session.newStatus, cibaSessionId: session.sessionId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'CIBA write failed');
+    setCibaSession((current) => current ? { ...current, status: 'executed' } : current);
+    setCibaMessage(data.message || `Order ${session.orderId} updated to ${session.newStatus}.`);
+  };
+
+  useEffect(() => {
+    if (!token || !vault.capabilities?.ciba_write || cibaSession?.status !== 'polling') return undefined;
+
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(`/api/ciba/status/${cibaSession.sessionId}`, { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not check CIBA status');
+        setCibaSession((current) => current ? { ...current, status: data.status } : current);
+        if (data.status === 'approved') {
+          await executeCibaWrite({ ...cibaSession, status: data.status });
+        } else if (data.status === 'denied' || data.status === 'expired') {
+          setCibaMessage(`CIBA request ${data.status}.`);
+        }
+      } catch (err) {
+        setCibaError(err.message);
+      }
+    };
+
+    const interval = setInterval(checkStatus, 3000);
+    return () => clearInterval(interval);
+  }, [token, vault.capabilities?.ciba_write, cibaSession]);
+
+  useEffect(() => {
+    if (!token || !vault.capabilities?.ciba_write || !cibaSession || cibaSession.status !== 'polling') return undefined;
+
+    fetchCibaPending().catch(() => {});
+    const interval = setInterval(() => {
+      fetchCibaPending().catch(() => {});
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [token, vault.capabilities?.ciba_write, cibaSession]);
+
+  const requestCibaWrite = async () => {
+    if (cibaBusy) return;
+    setCibaBusy(true);
+    setCibaError('');
+    setCibaPending(null);
+
+    try {
+      const orderId = Number.parseInt(cibaForm.orderId, 10);
+      if (!Number.isInteger(orderId) || orderId < 1) {
+        throw new Error('Use a valid order id.');
+      }
+
+      const res = await fetch('/api/ciba/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ orderId, newStatus: cibaForm.newStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not start CIBA flow');
+
+      setCibaSession({
+        sessionId: data.sessionId,
+        action: data.action,
+        orderId,
+        newStatus: cibaForm.newStatus,
+        status: 'polling',
+      });
+      setCibaMessage(`Write request created for order ${orderId}. Authorize it to continue.`);
+    } catch (err) {
+      setCibaError(err.message);
+    } finally {
+      setCibaBusy(false);
+    }
+  };
+
+  const authorizeCibaWrite = async () => {
+    if (cibaBusy || !cibaSession) return;
+    setCibaBusy(true);
+    setCibaError('');
+
+    try {
+      const pending = cibaPending || await fetchCibaPending();
+      if (!pending) throw new Error('No matching authorization request is pending yet.');
+
+      const res = await fetch('/api/ciba/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ requestId: pending.id, decision: 'SUCCEED' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Authorization failed');
+
+      setCibaPending(null);
+      setCibaMessage('Authorization sent. Waiting for write credential approval.');
+    } catch (err) {
+      setCibaError(err.message);
+    } finally {
+      setCibaBusy(false);
+    }
+  };
+
   const ask = async () => {
     if (!question.trim() || asking) return;
     const nextQuestion = question.trim();
     setAsking(true);
     setAskError('');
+    setAnswer('');
+    setCopyState('idle');
     setLastQuestion(nextQuestion);
 
     try {
@@ -231,9 +363,31 @@ export default function App() {
     }
   };
 
+  const copyAnswer = async () => {
+    if (!answer) return;
+    try {
+      await navigator.clipboard.writeText(answer);
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 1800);
+    } catch {
+      setCopyState('error');
+      setTimeout(() => setCopyState('idle'), 2200);
+    }
+  };
+
+  const clearAnswer = () => {
+    setAnswer('');
+    setLastQuestion('');
+    setAskError('');
+    setCopyState('idle');
+  };
+
   const { label, tone, icon } = STATUS[db];
   const vaultTone = vault.status === 'ok' ? 'vault' : vault.status === 'loading' ? 'loading' : 'error';
-  const sourceMeta = VAULT_SOURCE_META[vault.source] || { label: vault.source || 'Unknown', badge: null, cls: '' };
+  const baseSourceMeta = VAULT_SOURCE_META[vault.source] || { label: vault.source || 'Unknown', badge: null, cls: '' };
+  const sourceMeta = vault.capabilities?.ciba_write && vault.source === 'vault-jwt-dynamic'
+    ? { ...baseSourceMeta, badge: 'JWT+CIBA' }
+    : baseSourceMeta;
   const vaultDownMsg = vault.vaultHealth
     ? (vault.vaultHealth === 'sealed' ? 'Sealed' : 'Unreachable')
     : 'Unreachable';
@@ -245,6 +399,12 @@ export default function App() {
 
   const trustLevel = vault.trust_level ?? -1;
   const allowedSet = new Set(vault.allowed_classifications || []);
+  const unlockedCount = CLASSIFICATIONS.filter(({ key }) => allowedSet.has(key)).length;
+  const accessProgress = `${Math.round((unlockedCount / CLASSIFICATIONS.length) * 100)}%`;
+  const nextLocked = CLASSIFICATIONS.find(({ key }) => !allowedSet.has(key));
+  const cibaEnabled = vault.capabilities?.ciba_write === true;
+  const cibaCanAuthorize = Boolean(cibaSession && cibaSession.status === 'polling' && cibaPending);
+  const cibaStatus = cibaSession?.status || (cibaEnabled ? 'ready' : 'disabled');
 
   return (
     <div className="app">
@@ -293,6 +453,60 @@ export default function App() {
                 Query users, orders, and preferences while tracking the live health of PostgreSQL and Vault.
                 Data visibility changes automatically as you progress through the connector phases.
               </p>
+              {token && (
+                <div className="ciba-panel" aria-label="CIBA write authorization">
+                  <div className="ciba-panel-head">
+                    <div>
+                      <div className="ciba-kicker">Delegated write</div>
+                      <div className="ciba-title">Authorize an order status change</div>
+                    </div>
+                    <span className={`ciba-status ciba-status-${cibaStatus}`}>{cibaStatus}</span>
+                  </div>
+                  <div className="ciba-controls">
+                    <label className="ciba-field">
+                      <span>Order</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={cibaForm.orderId}
+                        onChange={(e) => setCibaForm((form) => ({ ...form, orderId: e.target.value }))}
+                        disabled={cibaBusy || !cibaEnabled}
+                      />
+                    </label>
+                    <label className="ciba-field">
+                      <span>Status</span>
+                      <select
+                        value={cibaForm.newStatus}
+                        onChange={(e) => setCibaForm((form) => ({ ...form, newStatus: e.target.value }))}
+                        disabled={cibaBusy || !cibaEnabled}
+                      >
+                        {ORDER_STATUSES.map((status) => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="ciba-btn ciba-request-btn"
+                      type="button"
+                      onClick={requestCibaWrite}
+                      disabled={cibaBusy || !cibaEnabled}
+                    >
+                      Request write
+                    </button>
+                    <button
+                      className="ciba-btn ciba-authorize-btn"
+                      type="button"
+                      onClick={authorizeCibaWrite}
+                      disabled={cibaBusy || !cibaCanAuthorize}
+                    >
+                      Authorize
+                    </button>
+                  </div>
+                  <div className={cibaError ? 'ciba-message ciba-message-error' : 'ciba-message'}>
+                    {cibaError || (cibaEnabled ? cibaMessage : 'Switch to the CIBA connector to enable delegated writes.')}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="status-panel" aria-label="System status">
               <div className="status-panel-title">System readiness</div>
@@ -331,6 +545,15 @@ export default function App() {
                     {trustLevel >= 0 && (
                       <span className="trust-level-badge">Level {trustLevel}</span>
                     )}
+                  </div>
+                  <div className="trust-summary">
+                    <span>{unlockedCount} of {CLASSIFICATIONS.length} classifications visible</span>
+                    {nextLocked && (
+                      <span className="trust-next">Next: {nextLocked.label}</span>
+                    )}
+                  </div>
+                  <div className="trust-meter" aria-hidden="true">
+                    <span style={{ width: accessProgress }} />
                   </div>
                   <div className="classification-grid">
                     {CLASSIFICATIONS.map(({ key, label: clsLabel, color, minLevel }) => {
@@ -406,8 +629,22 @@ export default function App() {
                   <div className="answer-kicker">Latest response</div>
                   <div className="answer-title">{lastQuestion || 'Ready for your first prompt'}</div>
                 </div>
-                <div className={`answer-state ${askError ? 'answer-state-error' : asking ? 'answer-state-streaming' : hasAnswer ? 'answer-state-ready' : 'answer-state-idle'}`}>
-                  {askError ? 'Retry available' : asking ? 'Streaming now' : hasAnswer ? 'Response captured' : 'Waiting'}
+                <div className="answer-tools">
+                  <div className={`answer-state ${askError ? 'answer-state-error' : asking ? 'answer-state-streaming' : hasAnswer ? 'answer-state-ready' : 'answer-state-idle'}`}>
+                    {askError ? 'Retry available' : asking ? 'Streaming now' : hasAnswer ? 'Response captured' : 'Waiting'}
+                  </div>
+                  {(hasAnswer || askError) && (
+                    <div className="answer-actions">
+                      {hasAnswer && (
+                        <button className="answer-action-btn" type="button" onClick={copyAnswer}>
+                          {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy failed' : 'Copy'}
+                        </button>
+                      )}
+                      <button className="answer-action-btn" type="button" onClick={clearAnswer}>
+                        Clear
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

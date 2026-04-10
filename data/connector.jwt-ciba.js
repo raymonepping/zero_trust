@@ -44,6 +44,10 @@ const DB_PASSWORD            = process.env.DB_PASSWORD;
 const MODE = (KEYCLOAK_CLIENT_SECRET && KEYCLOAK_USERNAME && KEYCLOAK_PASSWORD)
   ? "vault"
   : "static";
+const CONNECTOR_PHASE = "jwt-ciba";
+const CAPABILITIES = Object.freeze({
+  ciba_write: MODE === "vault",
+});
 
 if (MODE === "static" && (!DB_USER || !DB_PASSWORD)) {
   throw new Error(
@@ -500,6 +504,8 @@ function leaseInfoForRole(vaultRole) {
 
 module.exports = {
   MODE,
+  CONNECTOR_PHASE,
+  CAPABILITIES,
   resolveVaultRole,
   getKnownRoles,
   onRotation,

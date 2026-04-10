@@ -144,6 +144,168 @@ h1 {
   font-size: 1rem;
 }
 
+.ciba-panel {
+  width: 100%;
+  max-width: 560px;
+  margin-top: 22px;
+  padding: 16px;
+  background: rgba(6, 6, 6, 0.82);
+  border: 1px solid rgba(255, 196, 71, 0.14);
+  border-radius: 8px;
+}
+
+.ciba-panel-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.ciba-kicker {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.ciba-title {
+  margin-top: 4px;
+  color: #fff3cf;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.ciba-status {
+  min-width: 76px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.ciba-status-ready,
+.ciba-status-executed {
+  background: rgba(52, 211, 153, 0.12);
+  color: #74e4b9;
+}
+
+.ciba-status-polling,
+.ciba-status-approved {
+  background: rgba(246, 198, 79, 0.13);
+  color: #f9d978;
+}
+
+.ciba-status-disabled,
+.ciba-status-denied,
+.ciba-status-expired {
+  background: rgba(255, 122, 69, 0.13);
+  color: #ff9a6b;
+}
+
+.ciba-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.ciba-field {
+  display: grid;
+  gap: 6px;
+  flex: 1 1 110px;
+  min-width: 0;
+}
+
+.ciba-field:first-child {
+  flex: 0 1 96px;
+}
+
+.ciba-field span {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.ciba-field input,
+.ciba-field select {
+  min-height: 40px;
+  width: 100%;
+  border: 1px solid rgba(255, 196, 71, 0.16);
+  border-radius: 8px;
+  background: rgba(10, 10, 10, 0.96);
+  color: var(--text);
+  font: inherit;
+  padding: 9px 10px;
+}
+
+.ciba-field input:focus-visible,
+.ciba-field select:focus-visible {
+  outline: none;
+  border-color: var(--yellow);
+  box-shadow: 0 0 0 3px rgba(246, 198, 79, 0.12);
+}
+
+.ciba-field input:disabled,
+.ciba-field select:disabled {
+  opacity: 0.5;
+}
+
+.ciba-btn {
+  flex: 1 1 120px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 10px 12px;
+  transition: transform 0.16s ease, filter 0.16s ease, opacity 0.16s ease;
+}
+
+.ciba-request-btn {
+  background: linear-gradient(135deg, var(--yellow), var(--orange));
+  color: #1b1203;
+}
+
+.ciba-authorize-btn {
+  background: rgba(52, 211, 153, 0.16);
+  color: #9af3ce;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.ciba-btn:hover:not(:disabled),
+.ciba-btn:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.ciba-btn:disabled {
+  opacity: 0.42;
+  cursor: default;
+  transform: none;
+  filter: none;
+}
+
+.ciba-message {
+  min-height: 18px;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.ciba-message-error {
+  color: #ff9a6b;
+}
+
 .status-panel {
   position: relative;
   z-index: 1;
@@ -330,11 +492,41 @@ h1 {
 .trust-level-badge {
   font-size: 0.62rem;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: 8px;
   background: rgba(246, 198, 79, 0.12);
   color: var(--yellow);
   border: 1px solid rgba(246, 198, 79, 0.25);
   letter-spacing: 0.05em;
+}
+
+.trust-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-bottom: 8px;
+}
+
+.trust-next {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.trust-meter {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  margin-bottom: 12px;
+}
+
+.trust-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #34d399, var(--yellow), var(--orange), #f87171);
+  transition: width 0.2s ease;
 }
 
 .classification-grid {
@@ -347,7 +539,7 @@ h1 {
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
-  border-radius: 10px;
+  border-radius: 8px;
   font-size: 0.82rem;
   border: 1px solid transparent;
   transition: opacity 0.2s ease;
@@ -355,7 +547,7 @@ h1 {
 
 .classification-active {
   background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(var(--cls-color), 0.2);
+  border-color: color-mix(in srgb, var(--cls-color) 36%, transparent);
 }
 
 .classification-active .classification-dot {
@@ -591,10 +783,10 @@ h2 {
 }
 
 .answer-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: start;
-  justify-content: space-between;
 }
 
 .answer-kicker {
@@ -610,13 +802,44 @@ h2 {
 }
 
 .answer-state {
-  flex: 0 0 auto;
   padding: 8px 12px;
-  border-radius: 999px;
+  border-radius: 8px;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.answer-tools {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.answer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+}
+
+.answer-action-btn {
+  border: 1px solid rgba(255, 196, 71, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 7px 10px;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+
+.answer-action-btn:hover,
+.answer-action-btn:focus-visible {
+  outline: none;
+  border-color: var(--border-strong);
+  color: #fff3cf;
+  background: rgba(246, 198, 79, 0.1);
 }
 
 .answer-state-idle {
@@ -717,6 +940,10 @@ h2 {
     text-align: left;
   }
 
+  .ciba-controls {
+    display: flex;
+  }
+
   .input-row {
     grid-template-columns: 1fr;
   }
@@ -738,6 +965,16 @@ h2 {
 
   .indicator {
     align-items: start;
+  }
+
+  .ciba-panel-head,
+  .ciba-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .ciba-status {
+    justify-self: start;
   }
 
   .answer-box {

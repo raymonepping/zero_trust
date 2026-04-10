@@ -28,6 +28,7 @@ By default, the script runs the full route test sequence, including:
   - public GET routes
   - token acquisition via /auth/token
   - authenticated route checks
+  - CIBA capability smoke check
   - lease rotation test
 
 OPTIONS:
@@ -48,11 +49,13 @@ Supported route selectors:
   orders
   preferences
   credentials
+  ciba-capability
   health-lease
   rotate
   auth-token
   public
   authenticated
+  ciba
   all
 
 Examples:
@@ -79,11 +82,13 @@ users
 orders
 preferences
 credentials
+ciba-capability
 health-lease
 rotate
 auth-token
 public
 authenticated
+ciba
 all
 EOF
 }
@@ -200,8 +205,30 @@ run_authenticated_routes() {
   run_get "/orders" "GET /orders (authenticated)"
   run_get "/preferences" "GET /preferences (authenticated)"
   run_get "/credentials" "GET /credentials (authenticated)"
+  run_ciba_capability
   run_get "/health/lease" "GET /health/lease (after token acquisition)"
   run_post_json "/health/lease/rotate" "POST /health/lease/rotate" '{}'
+}
+
+run_ciba_capability() {
+  fetch_token
+  print_header "CIBA capability smoke check"
+
+  local credentials
+  credentials="$(curl -sS "${AUTH_HEADER[@]}" "${BASE_URL}/credentials")"
+
+  printf '%s\n' "${credentials}" | jq '{source, connector_phase, capabilities}'
+
+  local ciba_write
+  ciba_write="$(printf '%s' "${credentials}" | jq -r '.capabilities.ciba_write // false')"
+
+  if [ "${ciba_write}" != "true" ]; then
+    echo "CIBA write capability is not enabled for the active connector; skipping /ciba/initiate smoke check."
+    return 0
+  fi
+
+  run_post_json "/ciba/initiate" "POST /ciba/initiate (capability smoke)" \
+    '{"orderId":1,"newStatus":"shipped"}'
 }
 
 run_selector() {
@@ -213,6 +240,7 @@ run_selector() {
     orders) fetch_token; run_get "/orders" "GET /orders (authenticated)" ;;
     preferences) fetch_token; run_get "/preferences" "GET /preferences (authenticated)" ;;
     credentials) fetch_token; run_get "/credentials" "GET /credentials (authenticated)" ;;
+    ciba-capability|ciba) run_ciba_capability ;;
     health-lease) run_get "/health/lease" "GET /health/lease" ;;
     rotate) fetch_token; run_post_json "/health/lease/rotate" "POST /health/lease/rotate" '{}' ;;
     auth-token) run_auth_token ;;
@@ -278,6 +306,7 @@ GET  /users
 GET  /orders
 GET  /preferences
 GET  /credentials
+POST /ciba/initiate
 GET  /health/lease
 POST /health/lease/rotate
 POST /auth/token

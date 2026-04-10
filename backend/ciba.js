@@ -117,11 +117,8 @@ async function initiate({ loginHint, bindingMessage, scope, initiatedBy, action 
     throw new Error("CIBA initiate did not return auth_req_id");
   }
 
-  log.info("CIBA: Auth request created", {
-    auth_req_id: authReqId,
-    expires_in:  expiresIn,
-    interval,
-  });
+  log.info("CIBA: Auth request created", { expires_in: expiresIn, interval });
+  log.debug("CIBA: Auth request id", { auth_req_id: authReqId });
 
   return { authReqId, expiresIn, interval };
 }
@@ -269,7 +266,7 @@ async function pollForApproval(authReqId, options = {}) {
   const timeout    = options.timeout || CIBA_TIMEOUT_MS;
   const startedAt  = Date.now();
 
-  log.info("CIBA: Polling started", { auth_req_id: authReqId });
+  log.debug("CIBA: Polling started", { auth_req_id: authReqId });
 
   while (Date.now() - startedAt < timeout) {
     await sleep(intervalMs);
@@ -290,10 +287,8 @@ async function pollForApproval(authReqId, options = {}) {
     if (res.ok) {
       const json = await res.json();
 
-      log.info("CIBA: Approval received, tokens issued", {
-        auth_req_id: authReqId,
-        expires_in:  json.expires_in,
-      });
+      log.info("CIBA: Approval received, tokens issued", { expires_in: json.expires_in });
+      log.debug("CIBA: Approved auth request id", { auth_req_id: authReqId });
 
       return {
         accessToken:  json.access_token,

@@ -52,6 +52,8 @@ const RENEWAL_THRESHOLD = 0.75;
 // ---------------------------------------------------------------------------
 
 const connectorMode        = connector.MODE || "legacy";
+const connectorPhase       = connector.CONNECTOR_PHASE || null;
+const connectorCapabilities = connector.CAPABILITIES || {};
 const connectorResolveRole = typeof connector.resolveVaultRole === "function"
   ? (role) => connector.resolveVaultRole(role)
   : () => "app-role";
@@ -334,6 +336,10 @@ app.get("/credentials", authenticateOptional, async (req, res) => {
 
     res.json({
       source:                  creds.source,
+      connector_phase:         connectorPhase,
+      capabilities:            {
+        ciba_write: connectorCapabilities.ciba_write === true,
+      },
       path:                    creds.path      || null,
       host:                    creds.host,
       port:                    creds.port,

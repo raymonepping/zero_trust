@@ -28,6 +28,19 @@ const { resolveVaultRole } = require("./roleResolver");
 
 const router = Router();
 
+function cibaWriteEnabled() {
+  return connector.CAPABILITIES?.ciba_write === true;
+}
+
+function requireCibaConnector(req, res, next) {
+  if (!cibaWriteEnabled()) {
+    return res.status(404).json({
+      error: "CIBA write flow is not enabled for the active connector",
+    });
+  }
+  next();
+}
+
 // ---------------------------------------------------------------------------
 // In-flight CIBA sessions — tracks initiate→poll→write lifecycle
 //
@@ -98,7 +111,7 @@ router.post("/request", (req, res) => {
  * Requires a valid user JWT (authenticate middleware).
  * The binding_message describes the action for the approval UI.
  */
-router.post("/initiate", authenticate, async (req, res) => {
+router.post("/initiate", authenticate, requireCibaConnector, async (req, res) => {
   const { orderId, newStatus } = req.body || {};
 
   if (!orderId || !newStatus) {
@@ -160,11 +173,11 @@ router.post("/initiate", authenticate, async (req, res) => {
 
     log.info("CIBA session created", {
       session_id:  sessionId,
-      auth_req_id: authReqId,
       user:        username,
       action:      bindingMessage,
       expires_in:  expiresIn,
     });
+    log.debug("CIBA session auth request id", { session_id: sessionId, auth_req_id: authReqId });
 
     res.json({
       sessionId,
@@ -189,7 +202,7 @@ router.post("/initiate", authenticate, async (req, res) => {
  * Returns pending CIBA delegation requests for the authenticated user.
  * The frontend polls this to show the approval dialog.
  */
-router.get("/pending", authenticate, (req, res) => {
+router.get("/pending", authenticate, requireCibaConnector, (req, res) => {
   const username = req.user?.preferred_username || req.user?.email || req.userContext?.email;
   const pending  = ciba.getPending(username);
   res.json(pending);
@@ -207,7 +220,7 @@ router.get("/pending", authenticate, (req, res) => {
  *
  * The requestId comes from GET /ciba/pending.
  */
-router.post("/approve", authenticate, async (req, res) => {
+router.post("/approve", authenticate, requireCibaConnector, async (req, res) => {
   const { requestId, decision } = req.body || {};
 
   if (!requestId || !decision) {
@@ -218,6 +231,10 @@ router.post("/approve", authenticate, async (req, res) => {
     await ciba.resolve(requestId, decision);
 
     log.info("CIBA approval processed", {
+      decision,
+      user: req.user?.preferred_username || req.userContext?.sub,
+    });
+    log.debug("CIBA approval request id", {
       request_id: requestId,
       decision,
       user: req.user?.preferred_username || req.userContext?.sub,
@@ -240,7 +257,7 @@ router.post("/approve", authenticate, async (req, res) => {
  * Returns the current status of a CIBA session.
  * The frontend polls this after calling /ciba/initiate.
  */
-router.get("/status/:sessionId", authenticate, (req, res) => {
+router.get("/status/:sessionId", authenticate, requireCibaConnector, (req, res) => {
   const session = cibaSessions.get(req.params.sessionId);
 
   if (!session) {
@@ -278,7 +295,7 @@ router.get("/status/:sessionId", authenticate, (req, res) => {
  *   3. Session action matches the requested update
  *   4. Write-scoped Vault credential (support-write)
  */
-router.post("/orders/:id/status", authenticate, async (req, res) => {
+router.post("/orders/:id/status", authenticate, requireCibaConnector, async (req, res) => {
   const orderId    = parseInt(req.params.id, 10);
   const { newStatus, cibaSessionId } = req.body || {};
 
@@ -390,7 +407,11 @@ router.get("/diagnostics", (req, res) => {
     };
   }
 
-  res.json({ ciba: cibaStatus, sessions });
+  res.json({
+    enabled: cibaWriteEnabled(),
+    ciba: cibaStatus,
+    sessions,
+  });
 });
 
 module.exports = router;
