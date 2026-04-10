@@ -24,6 +24,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [docs/readme_environment_settings.md](./docs/readme_environment_settings.md)  
   Root `.env` reference, variable behavior, fallbacks, and security notes.
 
+- [docs/readme_verify_stack.md](./docs/readme_verify_stack.md)  
+  Small preflight guide for running the verifier scripts in the right order.
+
 - [docs/readme_openapi.md](./docs/readme_openapi.md)  
   OpenAPI spec, Swagger UI exposure, and route/spec validation notes.
 
@@ -83,6 +86,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [docs/readme_verify_keycloak.md](./docs/readme_verify_keycloak.md)  
   Keycloak sanity checks for host reachability, admin CLI availability, and bootstrap admin auth.
 
+- [docs/readme_verify_vault.md](./docs/readme_verify_vault.md)  
+  Vault sanity checks for host reachability, seal state, and enabled mounts.
+
 - [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)  
   How the LDAP directory is populated and used.
 
@@ -134,6 +140,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [docs/readme_verify_postgresql.md](./docs/readme_verify_postgresql.md)  
   PostgreSQL volume, container, role, and table verification workflow.
 
+- [docs/readme_verify_vault.md](./docs/readme_verify_vault.md)  
+  Vault health, seal, token, secrets-engine, and auth-mount verification workflow.
+
 - [docs/readme_routes.md](./docs/readme_routes.md)  
   Script and API route reference for validating backend behavior during labs.
 
@@ -145,35 +154,39 @@ If you are a student running the labs for the first time:
 
 1. [README.md](./README.md)
 2. [docs/readme_environment_settings.md](./docs/readme_environment_settings.md)
-3. [docs/readme_frontend.md](./docs/readme_frontend.md)
-4. [docs/readme_backend.md](./docs/readme_backend.md)
-5. [docs/readme_routes.md](./docs/readme_routes.md)
-6. [docs/readme_openapi.md](./docs/readme_openapi.md)
-7. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
-8. [docs/readme_docker.md](./docs/readme_docker.md)
-9. [docs/readme_seed_db.md](./docs/readme_seed_db.md)
-10. [docs/readme_verify_postgresql.md](./docs/readme_verify_postgresql.md)
-11. [docs/readme_verify_ldap.md](./docs/readme_verify_ldap.md)
-12. [docs/readme_verify_keycloak.md](./docs/readme_verify_keycloak.md)
-13. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
-14. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
-15. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
-16. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
+3. [docs/readme_verify_stack.md](./docs/readme_verify_stack.md)
+4. [docs/readme_frontend.md](./docs/readme_frontend.md)
+5. [docs/readme_backend.md](./docs/readme_backend.md)
+6. [docs/readme_routes.md](./docs/readme_routes.md)
+7. [docs/readme_openapi.md](./docs/readme_openapi.md)
+8. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
+9. [docs/readme_docker.md](./docs/readme_docker.md)
+10. [docs/readme_seed_db.md](./docs/readme_seed_db.md)
+11. [docs/readme_verify_postgresql.md](./docs/readme_verify_postgresql.md)
+12. [docs/readme_verify_ldap.md](./docs/readme_verify_ldap.md)
+13. [docs/readme_verify_keycloak.md](./docs/readme_verify_keycloak.md)
+14. [docs/readme_verify_vault.md](./docs/readme_verify_vault.md)
+15. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
+16. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
+17. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
+18. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
 
 If you are operating or extending the workshop:
 
 1. [README.md](./README.md)
 2. [docs/readme_environment_settings.md](./docs/readme_environment_settings.md)
-3. [docs/readme_frontend.md](./docs/readme_frontend.md)
-4. [docs/readme_backend.md](./docs/readme_backend.md)
-5. [docs/readme_routes.md](./docs/readme_routes.md)
-6. [docs/readme_openapi.md](./docs/readme_openapi.md)
-7. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
-8. [docs/readme_docker.md](./docs/readme_docker.md)
-9. [docs/readme_podman.md](./docs/readme_podman.md)
-10. [docs/readme_verify_postgresql.md](./docs/readme_verify_postgresql.md)
-11. [docs/readme_verify_ldap.md](./docs/readme_verify_ldap.md)
-12. [docs/readme_verify_keycloak.md](./docs/readme_verify_keycloak.md)
-13. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
-14. [docs/readme_images_build.md](./docs/readme_images_build.md)
-15. [docs/readme_images_purge.md](./docs/readme_images_purge.md)
+3. [docs/readme_verify_stack.md](./docs/readme_verify_stack.md)
+4. [docs/readme_frontend.md](./docs/readme_frontend.md)
+5. [docs/readme_backend.md](./docs/readme_backend.md)
+6. [docs/readme_routes.md](./docs/readme_routes.md)
+7. [docs/readme_openapi.md](./docs/readme_openapi.md)
+8. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
+9. [docs/readme_docker.md](./docs/readme_docker.md)
+10. [docs/readme_podman.md](./docs/readme_podman.md)
+11. [docs/readme_verify_postgresql.md](./docs/readme_verify_postgresql.md)
+12. [docs/readme_verify_ldap.md](./docs/readme_verify_ldap.md)
+13. [docs/readme_verify_keycloak.md](./docs/readme_verify_keycloak.md)
+14. [docs/readme_verify_vault.md](./docs/readme_verify_vault.md)
+15. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
+16. [docs/readme_images_build.md](./docs/readme_images_build.md)
+17. [docs/readme_images_purge.md](./docs/readme_images_purge.md)
