@@ -125,6 +125,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [docs/readme_seed_db.md](./docs/readme_seed_db.md)  
   Database seeding and workshop data reset behavior.
 
+- [docs/readme_verify_postgres.md](./docs/readme_verify_postgres.md)  
+  PostgreSQL volume, container, role, and table verification workflow.
+
 - [docs/readme_routes.md](./docs/readme_routes.md)  
   Script and API route reference for validating backend behavior during labs.
 
@@ -143,10 +146,11 @@ If you are a student running the labs for the first time:
 7. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
 8. [docs/readme_docker.md](./docs/readme_docker.md)
 9. [docs/readme_seed_db.md](./docs/readme_seed_db.md)
-10. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
-11. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
-12. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
-13. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
+10. [docs/readme_verify_postgres.md](./docs/readme_verify_postgres.md)
+11. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
+12. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
+13. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
+14. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
 
 If you are operating or extending the workshop:
 
@@ -159,6 +163,7 @@ If you are operating or extending the workshop:
 7. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
 8. [docs/readme_docker.md](./docs/readme_docker.md)
 9. [docs/readme_podman.md](./docs/readme_podman.md)
-10. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
-11. [docs/readme_images_build.md](./docs/readme_images_build.md)
-12. [docs/readme_images_purge.md](./docs/readme_images_purge.md)
+10. [docs/readme_verify_postgres.md](./docs/readme_verify_postgres.md)
+11. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
+12. [docs/readme_images_build.md](./docs/readme_images_build.md)
+13. [docs/readme_images_purge.md](./docs/readme_images_purge.md)
