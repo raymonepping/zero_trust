@@ -55,13 +55,16 @@ docker stats --no-stream --format \
   "{{.ID}}|{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}" \
 | tr -d '\r' \
 | while IFS='|' read -r id name cpu mem mempct netio blockio; do
+    display_name="$name"
     if [[ -n "${CONTAINER_NAMES[$id]:-}" ]]; then
-      name="${CONTAINER_NAMES[$id]}"
+      display_name="${CONTAINER_NAMES[$id]}"
     fi
-    if [[ "$DEBUG_INSPECT" == "1" ]]; then
-      printf 'DEBUG id=%q raw=%q\n' "$id" "$name" >&2
-    fi
-    name=$(printf '%s' "$name" | awk '{sub(/.*zero_trust_/, ""); print}')
+    display_name=$(printf '%s' "$display_name" | awk '{sub(/.*zero_trust_/, ""); print}')
+    printf '%s|%s|%s|%s|%s\n' \
+      "$display_name" "$cpu" "$mempct" "$netio" "$blockio"
+  done \
+| sort -t '|' -k1,1 \
+| while IFS='|' read -r name cpu mempct netio blockio; do
     if [[ "$DEBUG_INSPECT" == "1" ]]; then
       printf 'DEBUG trimmed=%q\n' "$name" >&2
     fi
