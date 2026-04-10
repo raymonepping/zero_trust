@@ -28,7 +28,8 @@ By default, the script runs the full route test sequence, including:
   - public GET routes
   - token acquisition via /auth/token
   - authenticated route checks
-  - CIBA capability smoke check
+  - /ask smoke check
+  - CIBA route smoke checks when supported by the active connector
   - lease rotation test
 
 OPTIONS:
@@ -48,8 +49,14 @@ Supported route selectors:
   users
   orders
   preferences
+  training
+  tickets
+  projects
   credentials
+  ask
   ciba-capability
+  ciba-pending
+  ciba-diagnostics
   health-lease
   rotate
   auth-token
@@ -81,8 +88,14 @@ health
 users
 orders
 preferences
+training
+tickets
+projects
 credentials
+ask
 ciba-capability
+ciba-pending
+ciba-diagnostics
 health-lease
 rotate
 auth-token
@@ -195,7 +208,11 @@ run_public_routes() {
   run_get "/users" "GET /users (unauthenticated)"
   run_get "/orders" "GET /orders (unauthenticated)"
   run_get "/preferences" "GET /preferences (unauthenticated)"
+  run_get "/training" "GET /training (unauthenticated)"
+  run_get "/tickets" "GET /tickets (unauthenticated)"
+  run_get "/projects" "GET /projects (unauthenticated)"
   run_get "/credentials" "GET /credentials (unauthenticated)"
+  run_get "/ciba/diagnostics" "GET /ciba/diagnostics"
   run_get "/health/lease" "GET /health/lease"
 }
 
@@ -204,10 +221,20 @@ run_authenticated_routes() {
   run_get "/users" "GET /users (authenticated)"
   run_get "/orders" "GET /orders (authenticated)"
   run_get "/preferences" "GET /preferences (authenticated)"
+  run_get "/training" "GET /training (authenticated)"
+  run_get "/tickets" "GET /tickets (authenticated)"
+  run_get "/projects" "GET /projects (authenticated)"
   run_get "/credentials" "GET /credentials (authenticated)"
+  run_ask
   run_ciba_capability
   run_get "/health/lease" "GET /health/lease (after token acquisition)"
   run_post_json "/health/lease/rotate" "POST /health/lease/rotate" '{}'
+}
+
+run_ask() {
+  fetch_token
+  run_post_json "/ask" "POST /ask" \
+    "{\"question\":\"${QUESTION}\"}"
 }
 
 run_ciba_capability() {
@@ -224,9 +251,12 @@ run_ciba_capability() {
 
   if [ "${ciba_write}" != "true" ]; then
     echo "CIBA write capability is not enabled for the active connector; skipping /ciba/initiate smoke check."
+    run_get "/ciba/diagnostics" "GET /ciba/diagnostics"
     return 0
   fi
 
+  run_get "/ciba/pending" "GET /ciba/pending"
+  run_get "/ciba/diagnostics" "GET /ciba/diagnostics"
   run_post_json "/ciba/initiate" "POST /ciba/initiate (capability smoke)" \
     '{"orderId":1,"newStatus":"shipped"}'
 }
@@ -239,8 +269,14 @@ run_selector() {
     users) fetch_token; run_get "/users" "GET /users (authenticated)" ;;
     orders) fetch_token; run_get "/orders" "GET /orders (authenticated)" ;;
     preferences) fetch_token; run_get "/preferences" "GET /preferences (authenticated)" ;;
+    training) fetch_token; run_get "/training" "GET /training (authenticated)" ;;
+    tickets) fetch_token; run_get "/tickets" "GET /tickets (authenticated)" ;;
+    projects) fetch_token; run_get "/projects" "GET /projects (authenticated)" ;;
     credentials) fetch_token; run_get "/credentials" "GET /credentials (authenticated)" ;;
+    ask) run_ask ;;
     ciba-capability|ciba) run_ciba_capability ;;
+    ciba-pending) fetch_token; run_get "/ciba/pending" "GET /ciba/pending" ;;
+    ciba-diagnostics) run_get "/ciba/diagnostics" "GET /ciba/diagnostics" ;;
     health-lease) run_get "/health/lease" "GET /health/lease" ;;
     rotate) fetch_token; run_post_json "/health/lease/rotate" "POST /health/lease/rotate" '{}' ;;
     auth-token) run_auth_token ;;
@@ -305,7 +341,13 @@ GET  /health
 GET  /users
 GET  /orders
 GET  /preferences
+GET  /training
+GET  /tickets
+GET  /projects
 GET  /credentials
+POST /ask
+GET  /ciba/pending
+GET  /ciba/diagnostics
 POST /ciba/initiate
 GET  /health/lease
 POST /health/lease/rotate

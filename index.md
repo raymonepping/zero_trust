@@ -27,6 +27,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [docs/readme_frontend.md](./docs/readme_frontend.md)  
   Frontend architecture, runtime behavior, UI flows, and Vite/Docker notes.
 
+- [docs/readme_routes.md](./docs/readme_routes.md)  
+  Backend route reference and usage notes for the route test script.
+
 - [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)  
   Detailed explanation of every connector mode and how the progression works.
 
@@ -42,6 +45,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 
 - [docs/readme_frontend.md](./docs/readme_frontend.md)  
   How the student-facing UI reflects connector state, trust level, and CIBA workflows.
+
+- [docs/readme_routes.md](./docs/readme_routes.md)  
+  Current API route surface, auth expectations, and route smoke-testing behavior.
 
 - [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)  
   How Vault is configured for KV, dynamic credentials, AppRole, JWT, policies, and audit.
@@ -98,6 +104,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [docs/readme_seed_db.md](./docs/readme_seed_db.md)  
   Database seeding and workshop data reset behavior.
 
+- [docs/readme_routes.md](./docs/readme_routes.md)  
+  Script and API route reference for validating backend behavior during labs.
+
 ---
 
 ## Suggested Reading Order
@@ -107,19 +116,21 @@ If you are a student running the labs for the first time:
 1. [README.md](./README.md)
 2. [docs/readme_frontend.md](./docs/readme_frontend.md)
 3. [docs/readme_backend.md](./docs/readme_backend.md)
-4. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
-5. [docs/readme_seed_db.md](./docs/readme_seed_db.md)
-6. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
-7. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
-8. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
-9. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
+4. [docs/readme_routes.md](./docs/readme_routes.md)
+5. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
+6. [docs/readme_seed_db.md](./docs/readme_seed_db.md)
+7. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
+8. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
+9. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
+10. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
 
 If you are operating or extending the workshop:
 
 1. [README.md](./README.md)
 2. [docs/readme_frontend.md](./docs/readme_frontend.md)
 3. [docs/readme_backend.md](./docs/readme_backend.md)
-4. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
-5. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
-6. [docs/readme_images_build.md](./docs/readme_images_build.md)
-7. [docs/readme_images_purge.md](./docs/readme_images_purge.md)
+4. [docs/readme_routes.md](./docs/readme_routes.md)
+5. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
+6. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
+7. [docs/readme_images_build.md](./docs/readme_images_build.md)
+8. [docs/readme_images_purge.md](./docs/readme_images_purge.md)
