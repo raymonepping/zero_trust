@@ -88,6 +88,12 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 
 ## Container And Image Operations
 
+- [docs/readme_docker.md](./docs/readme_docker.md)  
+  Docker host prerequisites, sizing, ports, storage, and operational commands.
+
+- [docs/readme_podman.md](./docs/readme_podman.md)  
+  Podman machine prerequisites, sizing, compatibility notes, and operational commands.
+
 - [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)  
   Container resource inspection and Docker disk usage overview.
 
@@ -118,11 +124,12 @@ If you are a student running the labs for the first time:
 3. [docs/readme_backend.md](./docs/readme_backend.md)
 4. [docs/readme_routes.md](./docs/readme_routes.md)
 5. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
-6. [docs/readme_seed_db.md](./docs/readme_seed_db.md)
-7. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
-8. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
-9. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
-10. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
+6. [docs/readme_docker.md](./docs/readme_docker.md)
+7. [docs/readme_seed_db.md](./docs/readme_seed_db.md)
+8. [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
+9. [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
+10. [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
+11. [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
 
 If you are operating or extending the workshop:
 
@@ -131,6 +138,8 @@ If you are operating or extending the workshop:
 3. [docs/readme_backend.md](./docs/readme_backend.md)
 4. [docs/readme_routes.md](./docs/readme_routes.md)
 5. [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
-6. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
-7. [docs/readme_images_build.md](./docs/readme_images_build.md)
-8. [docs/readme_images_purge.md](./docs/readme_images_purge.md)
+6. [docs/readme_docker.md](./docs/readme_docker.md)
+7. [docs/readme_podman.md](./docs/readme_podman.md)
+8. [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
+9. [docs/readme_images_build.md](./docs/readme_images_build.md)
+10. [docs/readme_images_purge.md](./docs/readme_images_purge.md)

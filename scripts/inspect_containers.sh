@@ -82,18 +82,118 @@ docker stats --no-stream --format \
   done
 
 echo ""
-echo -e "${BOLD}${CYAN}=== Disk Usage ===${RESET}"
+echo -e "${BOLD}${CYAN}=== Disk Usage (zero_trust project) ===${RESET}"
 
-docker system df --format "{{.Type}}|{{.TotalCount}}|{{.Active}}|{{.Size}}|{{.Reclaimable}}" \
-| tr -d '\r' \
-| awk -F'|' -v SEP=" │ " 'BEGIN {
-    printf "\033[1m%-16s%s%-7s%s%-7s%s%-12s%s%s\033[0m\n", \
-      "TYPE", SEP, "TOTAL", SEP, "ACTIVE", SEP, "SIZE", SEP, "RECLAIMABLE"
-    n=16+3+7+3+7+3+12+3+12
-    for(i=0;i<n;i++) printf "─"; printf "\n"
-  }
-  {
-    printf "%-16s%s%-7s%s%-7s%s%-12s%s%s\n", $1, SEP, $2, SEP, $3, SEP, $4, SEP, $5
-  }'
+COMPOSE_PROJECT="zero_trust"
+
+# ── Images used by this project ─────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}Images${RESET}"
+printf '%.0s─' $(seq 1 72); echo
+
+project_images=$(docker ps -a \
+  --filter "name=${COMPOSE_PROJECT}_" \
+  --format "{{.Image}}" 2>/dev/null | sort -u)
+
+if [[ -z "$project_images" ]]; then
+  # Stack not running — read images from compose config
+  project_images=$(cd "$(dirname "$0")/.." && docker compose config 2>/dev/null \
+    | grep -E "^\s+image:" | awk '{print $2}' | sort -u)
+fi
+
+total_image_bytes=0
+printf "${BOLD}%-50s %10s %s${RESET}\n" "IMAGE" "SIZE" "STATUS"
+printf '%.0s─' $(seq 1 72); echo
+
+while IFS= read -r img; do
+  [[ -z "$img" ]] && continue
+  info=$(docker image inspect "$img" \
+    --format '{{.Size}}|{{.RepoTags}}' 2>/dev/null || echo "")
+  if [[ -z "$info" ]]; then
+    printf "%-50s %10s %s\n" "$img" "n/a" "(not pulled)"
+    continue
+  fi
+  raw_bytes=$(echo "$info" | cut -d'|' -f1)
+  total_image_bytes=$(( total_image_bytes + raw_bytes ))
+  size_human=$(docker image inspect "$img" \
+    --format '{{.Size}}' 2>/dev/null \
+    | awk '{
+        if ($1 >= 1073741824) printf "%.1fGB", $1/1073741824
+        else if ($1 >= 1048576) printf "%.1fMB", $1/1048576
+        else printf "%.0fKB", $1/1024
+      }')
+  printf "%-50s %10s\n" "$img" "$size_human"
+done <<< "$project_images"
+
+total_img_human=$(echo "$total_image_bytes" | awk '{
+  if ($1 >= 1073741824) printf "%.1fGB", $1/1073741824
+  else if ($1 >= 1048576) printf "%.1fMB", $1/1048576
+  else printf "%.0fKB", $1/1024
+}')
+printf '%.0s─' $(seq 1 72); echo
+printf "${BOLD}%-50s %10s${RESET}\n" "TOTAL" "$total_img_human"
+
+# ── Containers for this project ──────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}Containers${RESET}"
+printf '%.0s─' $(seq 1 72); echo
+printf "${BOLD}%-35s %-12s %10s %s${RESET}\n" "NAME" "STATUS" "SIZE" "IMAGE"
+printf '%.0s─' $(seq 1 72); echo
+
+total_container_bytes=0
+docker ps -a --format "{{.Names}}|{{.Status}}|{{.Size}}|{{.Image}}" 2>/dev/null \
+  | grep "^${COMPOSE_PROJECT}_" \
+  | while IFS='|' read -r name status size image; do
+      short=$(echo "$name" | sed "s/^${COMPOSE_PROJECT}_//")
+      # extract the writable-layer size (before the virtual marker)
+      layer=$(echo "$size" | grep -oE '^[0-9.]+(B|kB|MB|GB)')
+      printf "%-35s %-12s %10s %s\n" \
+        "$short" \
+        "${status%% (*}" \
+        "${layer:-$size}" \
+        "$image"
+    done
+
+# ── Volumes for this project ─────────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}Volumes${RESET}"
+printf '%.0s─' $(seq 1 72); echo
+printf "${BOLD}%-40s %10s %s${RESET}\n" "VOLUME" "SIZE" "STATUS"
+printf '%.0s─' $(seq 1 72); echo
+
+total_vol_bytes=0
+for vol_suffix in db_data vault_data vault-agent-secrets ollama_data \
+                  openldap-data openldap-config keycloak_data; do
+  vol_name="${COMPOSE_PROJECT}_${vol_suffix}"
+  exists=$(docker volume ls --format "{{.Name}}" 2>/dev/null \
+    | grep -x "$vol_name" || true)
+  if [[ -z "$exists" ]]; then
+    printf "%-40s %10s %s\n" "$vol_suffix" "—" "(not created)"
+    continue
+  fi
+  # Run du inside a throwaway container — Docker volume mountpoints on macOS
+  # live inside the Docker Desktop VM and are not accessible from the host.
+  size_raw=$(docker run --rm \
+    -v "${vol_name}:/data:ro" \
+    --entrypoint sh \
+    alpine -c 'du -sb /data 2>/dev/null | cut -f1' 2>/dev/null || echo "0")
+  size_raw="${size_raw//[^0-9]/}"
+  size_raw="${size_raw:-0}"
+  size_human=$(echo "$size_raw" | awk '{
+    if ($1 >= 1073741824) printf "%.1fGB", $1/1073741824
+    else if ($1 >= 1048576) printf "%.1fMB", $1/1048576
+    else printf "%.0fKB", $1/1024
+  }')
+  total_vol_bytes=$(( total_vol_bytes + size_raw ))
+  printf "%-40s %10s\n" "$vol_suffix" "$size_human"
+done
+
+total_vol_human=$(echo "$total_vol_bytes" | awk '{
+  if ($1 >= 1073741824) printf "%.1fGB", $1/1073741824
+  else if ($1 >= 1048576) printf "%.1fMB", $1/1048576
+  else printf "%.0fKB", $1/1024
+}')
+printf '%.0s─' $(seq 1 72); echo
+printf "${BOLD}%-40s %10s${RESET}\n" "TOTAL" "$total_vol_human"
 
 echo ""
