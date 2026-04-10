@@ -21,6 +21,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [README.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/README.md)  
   Main workshop overview, architecture, startup flow, and recommended lab order.
 
+- [docs/readme_backend.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_backend.md)  
+  Backend architecture, API behavior, connector integration, and operational notes.
+
 - [docs/readme_frontend.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_frontend.md)  
   Frontend architecture, runtime behavior, UI flows, and Vite/Docker notes.
 
@@ -33,6 +36,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 
 - [docs/readme_switch_connector.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_switch_connector.md)  
   Connector progression, prerequisites for each mode, and switching mechanics.
+
+- [docs/readme_backend.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_backend.md)  
+  How the backend enforces auth, resolves credentials, and exposes the workshop API.
 
 - [docs/readme_frontend.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_frontend.md)  
   How the student-facing UI reflects connector state, trust level, and CIBA workflows.
@@ -100,18 +106,20 @@ If you are a student running the labs for the first time:
 
 1. [README.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/README.md)
 2. [docs/readme_frontend.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_frontend.md)
-3. [docs/readme_switch_connector.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_switch_connector.md)
-4. [docs/readme_seed_db.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_seed_db.md)
-5. [docs/readme_setup_ldap.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_ldap.md)
-6. [docs/readme_setup_keycloak.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_keycloak.md)
-7. [docs/readme_setup_vault.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_vault.md)
-8. [docs/readme_vault_unseal.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_vault_unseal.md)
+3. [docs/readme_backend.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_backend.md)
+4. [docs/readme_switch_connector.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_switch_connector.md)
+5. [docs/readme_seed_db.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_seed_db.md)
+6. [docs/readme_setup_ldap.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_ldap.md)
+7. [docs/readme_setup_keycloak.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_keycloak.md)
+8. [docs/readme_setup_vault.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_vault.md)
+9. [docs/readme_vault_unseal.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_vault_unseal.md)
 
 If you are operating or extending the workshop:
 
 1. [README.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/README.md)
 2. [docs/readme_frontend.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_frontend.md)
-3. [docs/readme_switch_connector.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_switch_connector.md)
-4. [docs/readme_inspect_containers.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_inspect_containers.md)
-5. [docs/readme_images_build.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_images_build.md)
-6. [docs/readme_images_purge.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_images_purge.md)
+3. [docs/readme_backend.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_backend.md)
+4. [docs/readme_switch_connector.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_switch_connector.md)
+5. [docs/readme_inspect_containers.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_inspect_containers.md)
+6. [docs/readme_images_build.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_images_build.md)
+7. [docs/readme_images_purge.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_images_purge.md)
