@@ -7,10 +7,19 @@ Usage:
   eval "$("./scripts/vault_login.sh")"
 
 This script reads Vault credentials from ./data/.vault.env, authenticates with
-Vault using userpass, and sets or prints:
+Vault using a username/password auth method, and sets or prints:
   VAULT_ADDR
   VAULT_NAMESPACE
   VAULT_TOKEN
+
+Supported env vars in ./data/.vault.env:
+  VAULT_AUTH_METHOD      ldap (default) or userpass
+  VAULT_LOGIN_USERNAME   preferred username variable
+  VAULT_LOGIN_PASSWORD   preferred password variable
+
+Backwards-compatible fallback vars:
+  USER
+  PASSWORD
 
 When sourced, it exports the variables directly into your current shell.
 When executed, it prints export commands so you can use it with eval.
@@ -79,6 +88,7 @@ main() {
 
   local script_source script_dir env_file
   local vault_login_user vault_login_password vault_login_namespace vault_login_addr
+  local vault_auth_method
   local vault_token
 
   if [[ -n "${BASH_VERSION:-}" ]]; then
@@ -122,9 +132,22 @@ main() {
   vault_login_password="${PASSWORD:-}"
   vault_login_namespace="${VAULT_NAMESPACE:-}"
   vault_login_addr="${VAULT_ADDR:-}"
+  vault_auth_method="${VAULT_AUTH_METHOD:-ldap}"
+
+  if [[ -n "${VAULT_LOGIN_USERNAME:-}" ]]; then
+    vault_login_user="${VAULT_LOGIN_USERNAME}"
+  elif [[ -n "${VAULT_USERNAME:-}" ]]; then
+    vault_login_user="${VAULT_USERNAME}"
+  fi
+
+  if [[ -n "${VAULT_LOGIN_PASSWORD:-}" ]]; then
+    vault_login_password="${VAULT_LOGIN_PASSWORD}"
+  elif [[ -n "${VAULT_PASSWORD:-}" ]]; then
+    vault_login_password="${VAULT_PASSWORD}"
+  fi
 
   if [[ -z "${vault_login_user}" || -z "${vault_login_password}" ]]; then
-    error "USER and PASSWORD must be set in ${env_file}"
+    error "Set VAULT_LOGIN_USERNAME and VAULT_LOGIN_PASSWORD in ${env_file} (USER/PASSWORD also supported for compatibility)"
     return 1
   fi
 
@@ -133,7 +156,15 @@ main() {
     return 1
   fi
 
-  info "Authenticating to Vault as ${vault_login_user}"
+  case "${vault_auth_method}" in
+    ldap|userpass) ;;
+    *)
+      error "Unsupported VAULT_AUTH_METHOD '${vault_auth_method}'. Use ldap or userpass."
+      return 1
+      ;;
+  esac
+
+  info "Authenticating to Vault as ${vault_login_user} using ${vault_auth_method}"
   export VAULT_ADDR="${vault_login_addr}"
 
   if [[ -n "${vault_login_namespace}" ]]; then
@@ -145,11 +176,11 @@ main() {
   if ! vault_token="$(
     vault login \
       -token-only \
-      -method=userpass \
+      -method="${vault_auth_method}" \
       username="${vault_login_user}" \
       password="${vault_login_password}"
   )"; then
-    error "Vault login failed for user ${vault_login_user}"
+    error "Vault ${vault_auth_method} login failed for user ${vault_login_user}"
     return 1
   fi
 

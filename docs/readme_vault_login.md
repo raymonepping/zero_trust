@@ -3,7 +3,7 @@
 **Location:** `scripts/vault_login.sh`
 **Reads from:** `data/.vault.env`
 
-This script authenticates to a Vault instance using the **userpass** auth method and sets the resulting token in your shell environment. It supports both the local Docker Vault and remote HCP Vault (HashiCorp Cloud Platform), making it the right tool when you need to connect to an external Vault with a personal username and password — rather than using the root token from `vault/init.txt`.
+This script authenticates to a Vault instance using a **username + password** auth method and sets the resulting token in your shell environment. It now supports both **LDAP** and **userpass**, with LDAP as the default for the local Vault Enterprise setup used in this workshop.
 
 ---
 
@@ -14,7 +14,7 @@ This script authenticates to a Vault instance using the **userpass** auth method
 | `unseal_vault.sh` | Starting the local Docker Vault — applies unseal keys and prints the root token |
 | `vault_login.sh` | Authenticating as a named user (local or HCP Vault) — reads `data/.vault.env` and exchanges credentials for a scoped token |
 
-`unseal_vault.sh` gives you the **root token** — a superuser credential. `vault_login.sh` gives you a **userpass token** — a scoped, personal token. For day-to-day workshop use against an HCP Vault instance, or when working through the LDAP auth lab, use this script.
+`unseal_vault.sh` gives you the **root token** — a superuser credential. `vault_login.sh` gives you a **scoped user token** through either LDAP or userpass. For day-to-day workshop use against the local Vault Enterprise instance with LDAP enabled, this is the right script to use.
 
 ---
 
@@ -64,19 +64,23 @@ Shell subprocesses (scripts you execute with `./`) run in a **child process**. E
 This file holds the credentials and connection details the script reads. It lives in `data/` and is **not gitignored by default** — add it to `.gitignore` if it contains real credentials.
 
 ```bash
-USER=repping
-PASSWORD=changeme
+VAULT_AUTH_METHOD=ldap
+VAULT_LOGIN_USERNAME=repping
+VAULT_LOGIN_PASSWORD=changeme
 
 VAULT_NAMESPACE="admin/repping-ns"
-VAULT_ADDR="https://zero-trust-public-vault-7d437407.14069bd4.z1.hashicorp.cloud:8200"
+VAULT_ADDR="https://vault.example:8200"
 ```
 
 | Variable | Purpose |
 |----------|---------|
-| `USER` | Vault userpass username |
-| `PASSWORD` | Vault userpass password |
+| `VAULT_AUTH_METHOD` | Auth method used by `vault login`; supported values are `ldap` and `userpass` |
+| `VAULT_LOGIN_USERNAME` | Preferred username variable |
+| `VAULT_LOGIN_PASSWORD` | Preferred password variable |
 | `VAULT_ADDR` | Full URL of the Vault instance (local or HCP) |
 | `VAULT_NAMESPACE` | Optional — required for HCP Vault, omit for local Vault |
+
+For backward compatibility, the script still accepts `USER` and `PASSWORD`. The newer `VAULT_LOGIN_*` names are preferred because they are explicit and less likely to collide with shell defaults.
 
 ### Local Docker Vault vs. HCP Vault
 
@@ -84,17 +88,19 @@ The script works with both:
 
 **Local Docker Vault:**
 ```bash
-USER=repping
-PASSWORD=changeme
+VAULT_AUTH_METHOD=ldap
+VAULT_LOGIN_USERNAME=repping
+VAULT_LOGIN_PASSWORD=changeme
 VAULT_ADDR=http://127.0.0.1:8200
 # No VAULT_NAMESPACE needed
 ```
 
 **HCP Vault (cloud):**
 ```bash
-USER=repping
-PASSWORD=changeme
-VAULT_ADDR=https://zero-trust-public-vault-7d437407.14069bd4.z1.hashicorp.cloud:8200
+VAULT_AUTH_METHOD=userpass
+VAULT_LOGIN_USERNAME=repping
+VAULT_LOGIN_PASSWORD=changeme
+VAULT_ADDR=https://vault.example:8200
 VAULT_NAMESPACE=admin/repping-ns
 ```
 
@@ -179,7 +185,7 @@ vault_login_namespace="${VAULT_NAMESPACE:-}"
 vault_login_addr="${VAULT_ADDR:-}"
 ```
 
-Values are copied into local variables so they are clearly named and do not leak into the exported environment accidentally.
+Values are copied into local variables so they are clearly named and do not leak into the exported environment accidentally. The script prefers `VAULT_LOGIN_USERNAME` / `VAULT_LOGIN_PASSWORD`, then falls back to `VAULT_USERNAME` / `VAULT_PASSWORD`, and finally to the legacy `USER` / `PASSWORD` names.
 
 ### Namespace handling
 
@@ -199,7 +205,7 @@ If a namespace is set, export it so Vault CLI calls use it. If it is empty (loca
 vault_token="$(
   vault login \
     -token-only \
-    -method=userpass \
+    -method="${vault_auth_method}" \
     username="${vault_login_user}" \
     password="${vault_login_password}"
 )"
@@ -207,9 +213,14 @@ vault_token="$(
 
 `vault login -token-only` performs the authentication and prints only the resulting token — none of the surrounding metadata. The token is captured into `vault_token`.
 
-The **userpass auth method** is exactly what it sounds like: Vault validates a username and password against its own user database. This is simpler than AppRole (no role_id / secret_id pair) and is designed for humans rather than machines.
+The script accepts two username/password auth methods:
 
-> For the local Docker Vault, the `repping` userpass account must have been created. Phase 05 of `setup_vault.sh` (LDAP auth) is a separate method — userpass is configured independently. If you are using this script against a local Vault and it fails, check that a userpass account exists: `vault auth list` and `vault read auth/userpass/users/repping`.
+- `ldap`  
+  Vault delegates authentication to the configured LDAP directory. This is now the default and matches the workshop's local Vault Enterprise setup.
+- `userpass`  
+  Vault validates the username and password against Vault's own internal userpass backend.
+
+If you are using the local workshop stack, `ldap` is the correct default unless you have a separate reason to keep a local userpass backend active.
 
 ### Output — sourced vs. executed
 
@@ -293,17 +304,18 @@ vault token lookup | grep ttl
 
 ---
 
-## Comparison: userpass vs. other auth methods in this workshop
+## Comparison: username/password auth vs. other auth methods in this workshop
 
 | Auth method | Script | Who uses it | Credential type |
 |-------------|--------|-------------|-----------------|
 | Root token | `unseal_vault.sh` | Initial setup | Hardcoded in `init.txt` |
-| Userpass | `vault_login.sh` | Humans (personal login) | Username + password |
+| LDAP | `vault_login.sh` | Humans (directory-backed login) | Username + password via LDAP |
+| Userpass | `vault_login.sh` | Humans (Vault-local login) | Username + password |
 | AppRole | `setup_vault.sh` phase 03 | Backend service | role_id + secret_id |
 | JWT | `setup_vault.sh` phase 04 | Backend (per-user requests) | Keycloak JWT |
 | LDAP | `setup_vault.sh` phase 05 | Humans (LDAP-backed) | LDAP username + password |
 
-Userpass is the simplest human-facing method — credentials live directly in Vault and are not backed by an external directory. LDAP auth (phase 05) is similar but delegates credential validation to the LDAP server, so user management stays in one place.
+LDAP is now the primary human-facing method in this workshop. Userpass remains supported, but it is best treated as a compatibility or fallback option when you explicitly want Vault-local users instead of directory-backed identities.
 
 ---
 
@@ -313,8 +325,8 @@ Userpass is the simplest human-facing method — credentials live directly in Va
 |-------------|-----|
 | `vault` CLI on PATH | Performs the actual login |
 | `data/.vault.env` present | Contains credentials and connection info |
-| Userpass auth enabled in Vault | The auth method must be mounted |
-| Your user account created in Vault | Vault must know your username |
+| Selected auth method enabled in Vault | `ldap` or `userpass` must be mounted |
+| Your user account available in the chosen auth source | Either LDAP or Vault userpass must know your username |
 | HCP Vault: correct namespace | Requests go to the wrong scope without it |
 
 ---
@@ -325,12 +337,12 @@ Userpass is the simplest human-facing method — credentials live directly in Va
 Create `data/.vault.env` with your credentials. See the format above. The file must be in the `data/` directory at the project root.
 
 **`USER and PASSWORD must be set`**
-Your `.vault.env` file is missing `USER=` or `PASSWORD=`. Both are required.
+Your `.vault.env` file is missing the login credentials. Set `VAULT_LOGIN_USERNAME=` and `VAULT_LOGIN_PASSWORD=`. Legacy `USER=` and `PASSWORD=` still work, but they are no longer the preferred names.
 
-**`Vault login failed for user repping`**
+**`Vault ldap login failed for user repping`** or **`Vault userpass login failed for user repping`**
 - Wrong password in `.vault.env`
-- The `userpass` auth method is not enabled in Vault (`vault auth list`)
-- The user account does not exist (`vault read auth/userpass/users/repping`)
+- The configured auth method is not enabled in Vault (`vault auth list`)
+- The user account does not exist in the selected auth source
 - For HCP Vault: wrong namespace or the user is in a different namespace
 
 **`vault: command not found`**
@@ -340,4 +352,4 @@ Install the Vault CLI. See `readme_setup_vault.md` for installation commands.
 You ran it as `./scripts/vault_login.sh` instead of sourcing or eval-ing it. Environment variables cannot propagate from a child process to the parent shell — use `source ./scripts/vault_login.sh` or `eval "$(./scripts/vault_login.sh)"`.
 
 **Token expires mid-session**
-Re-run the login. Tokens issued via userpass have a TTL set by the Vault policy attached to your user. Check the TTL with `vault token lookup | grep ttl`.
+Re-run the login. Tokens issued via LDAP or userpass have a TTL set by the Vault policy attached to your user. Check the TTL with `vault token lookup | grep ttl`.
