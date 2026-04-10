@@ -26,6 +26,7 @@ No sensitive values are included here.
 - [Required Local Files And Directories](#required-local-files-and-directories)
 - [Recommended Docker Workflow](#recommended-docker-workflow)
 - [Useful Docker And Compose Commands](#useful-docker-and-compose-commands)
+- [Resource Usage Overview](#resource-usage-overview)
 - [Operational Notes](#operational-notes)
 - [Troubleshooting The Setup](#troubleshooting-the-setup)
 - [Troubleshooting](#troubleshooting)
@@ -364,6 +365,97 @@ docker system prune
 ```
 
 Use cleanup commands carefully. Named volumes contain workshop state.
+
+---
+
+## Resource Usage Overview
+
+The quickest way to inspect live resource usage for this workshop is:
+
+```bash
+./scripts/inspect_containers.sh
+```
+
+That script summarizes:
+
+- container CPU usage
+- container memory usage
+- network I/O
+- block I/O
+- image size
+- container writable layer size
+- named volume size
+
+Example output from a healthy running workshop environment:
+
+```text
+=== Container Resource Usage ===
+NAME         │ CPU                                         │     MEM% │ NET-I/O              │ BLOCK-I/O
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+backend      │ ███░░░░░░░░░░░░░░░░░ 0.18 cores (18.14%)    │    0.64% │ 16.6MB / 10.9MB      │ 0B / 4.1kB
+db           │ ██░░░░░░░░░░░░░░░░░░ 0.14 cores (14.35%)    │    0.69% │ 1.6MB / 1.31MB       │ 64.4MB / 26.5MB
+frontend     │ █░░░░░░░░░░░░░░░░░░░ 0.07 cores (7.35%)     │    0.73% │ 7.42MB / 10.3MB      │ 0B / 12.3kB
+keycloak     │ ██░░░░░░░░░░░░░░░░░░ 0.10 cores (10.19%)    │    5.66% │ 360kB / 218kB        │ 220MB / 17.3MB
+ollama       │ ███████░░░░░░░░░░░░░ 0.37 cores (36.87%)    │    4.46% │ 315kB / 81.6kB       │ 2.14GB / 0B
+openldap     │ ░░░░░░░░░░░░░░░░░░░░ 0.05 cores (4.69%)     │    0.34% │ 309kB / 25.7kB       │ 35.1MB / 190kB
+vault        │ ███████████████████░ 0.96 cores (96.03%)    │    4.20% │ 4.54MB / 8.02MB      │ 361MB / 7.18GB
+vault_agent  │ ░░░░░░░░░░░░░░░░░░░░ 0.03 cores (3.15%)     │    0.20% │ 77.7kB / 50.8kB      │ 0B / 118kB
+
+=== Disk Usage (zero_trust project) ===
+
+Images
+────────────────────────────────────────────────────────────────────────
+IMAGE                                                    SIZE STATUS
+────────────────────────────────────────────────────────────────────────
+hashicorp/vault-enterprise:1.21.4-ent                 506.3MB
+osixia/openldap:1.5.0                                 250.8MB
+osixia/phpldapadmin:0.9.0                             290.1MB
+quay.io/keycloak/keycloak:26.5.7                      446.3MB
+repping/zero-trust-backend:1.8.16                     180.1MB
+repping/zero-trust-frontend:1.8.16                    221.6MB
+zero_trust-db:latest                                  445.3MB
+zero_trust-ollama:latest                                5.2GB
+────────────────────────────────────────────────────────────────────────
+TOTAL                                                   7.5GB
+
+Containers
+────────────────────────────────────────────────────────────────────────
+NAME                                STATUS             SIZE IMAGE
+────────────────────────────────────────────────────────────────────────
+backend                             Up 12 hours      31.4kB repping/zero-trust-backend:1.8.16
+db                                  Up 18 hours       1.1MB zero_trust-db:latest
+frontend                            Up 13 hours      2.19MB repping/zero-trust-frontend:1.8.16
+keycloak                            Up 18 hours       167MB quay.io/keycloak/keycloak:26.5.7
+ldap-admin                          Exited            161kB osixia/phpldapadmin:0.9.0
+ollama                              Up 18 hours      2.29GB zero_trust-ollama:latest
+openldap                            Up 18 hours       258kB osixia/openldap:1.5.0
+vault_agent                         Up 12 hours       100kB hashicorp/vault-enterprise:1.21.4-ent
+vault                               Up 18 hours       518MB hashicorp/vault-enterprise:1.21.4-ent
+
+Volumes
+────────────────────────────────────────────────────────────────────────
+VOLUME                                         SIZE STATUS
+────────────────────────────────────────────────────────────────────────
+db_data                                      63.3MB
+keycloak_data                                 1.5MB
+ollama_data                                     1KB
+openldap-config                                83KB
+openldap-data                                 144KB
+vault-agent-secrets                             0KB
+vault_data                                   64.1MB
+────────────────────────────────────────────────────────────────────────
+TOTAL                                       129.2MB
+```
+
+How to read this:
+
+- `ollama` is the largest image and one of the main runtime resource consumers
+- `vault` can show high block I/O during active workshop operations
+- `keycloak` is usually one of the heavier memory consumers after Ollama
+- backend and frontend remain relatively light
+- the named volumes are small compared to image size and Ollama/container layers
+
+This example is not a hard requirement, but it is a useful reference point for a healthy local stack.
 
 ---
 
