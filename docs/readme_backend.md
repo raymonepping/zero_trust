@@ -474,6 +474,12 @@ The backend’s main routes are registered in [server.js](../backend/server.js).
 - `POST /health/lease/rotate`
   - forces manual credential rotation
 
+- `GET /openapi.json`
+  - returns the OpenAPI definition when route exposure is enabled
+
+- `GET /docs`
+  - serves Swagger UI backed by the OpenAPI definition when route exposure is enabled
+
 ### Data APIs
 
 All of these use `authenticateOptional`, so the backend can fall back to least privilege if no user JWT is present:
@@ -615,7 +621,7 @@ These drive the approval UI in the frontend.
 
 #### Write-gated action
 
-- `POST /ciba/orders/:id/status`
+- `POST /orders/:id/status`
 
 This route is only enabled when the active connector reports:
 
@@ -698,6 +704,17 @@ Used as a fallback for older/static connector modes when explicit credential fie
 - `KEYCLOAK_CLIENT_ID`
 - `KEYCLOAK_CLIENT_SECRET`
 
+### OpenAPI and docs exposure
+
+- `EXPOSE_ROUTES`
+
+When set to `true`, the backend exposes:
+
+- `http://localhost:3000/openapi.json`
+- `http://localhost:3000/docs`
+
+These routes are intentionally unauthenticated in the current workshop setup.
+
 ### Ollama
 
 - `OLLAMA_ADDR`
@@ -758,6 +775,20 @@ This works because:
 - the backend directory is bind-mounted
 - nodemon watches the key runtime files
 - `switch_connector.sh` swaps the file and restarts the container
+
+### OpenAPI and Swagger UI
+
+The backend now includes:
+
+- [openapi.json](../backend/openapi.json)
+- [openapi-routes.js](../backend/openapi-routes.js)
+
+When `EXPOSE_ROUTES=true`, these are served at:
+
+- `http://localhost:3000/openapi.json`
+- `http://localhost:3000/docs`
+
+The implementation is intentionally separate from the main route file so `server.js` stays focused on application startup and core route registration.
 
 ### Why that matters educationally
 

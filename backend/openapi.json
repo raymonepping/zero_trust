@@ -1,0 +1,1575 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Zero Trust Workshop Backend API",
+    "version": "1.0.0",
+    "description": "OpenAPI definition for the Zero Trust Workshop Express backend. This API mixes public routes, optional-auth read routes, authenticated identity flows, and CIBA-gated write operations."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local backend"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Runtime, connectivity, and lease health routes."
+    },
+    {
+      "name": "Data",
+      "description": "Read-only workshop data routes. Most support optional Bearer auth."
+    },
+    {
+      "name": "Auth",
+      "description": "User authentication and token exchange routes."
+    },
+    {
+      "name": "LLM",
+      "description": "Natural-language query route backed by Ollama."
+    },
+    {
+      "name": "CIBA",
+      "description": "Backchannel authentication and delegated-write routes."
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": true
+      },
+      "RootStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ]
+      },
+      "VaultHealth": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "sealed": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "ok",
+          "sealed",
+          "version"
+        ]
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "db": {
+            "type": "string"
+          },
+          "vault": {
+            "$ref": "#/components/schemas/VaultHealth"
+          }
+        },
+        "required": [
+          "status",
+          "mode",
+          "db",
+          "vault"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "joined": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "price": {
+            "type": "number"
+          },
+          "ordered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "classification": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Preference": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "classification": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Training": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "course": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "certified": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "classification": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Ticket": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "system": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "opened_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "classification": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "budget": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "start_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "classification": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "CredentialsResponse": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "connector_phase": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "ciba_write": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "ciba_write"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "database": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password": {
+            "type": "string"
+          },
+          "ttl": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "leaseId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vaultRole": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "issuedFor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trust_level": {
+            "type": "integer"
+          },
+          "allowed_classifications": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requestedBy": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "pools": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "leases": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "rotations": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "capabilities",
+          "password",
+          "trust_level",
+          "allowed_classifications",
+          "pools",
+          "leases"
+        ],
+        "additionalProperties": true
+      },
+      "LeaseHealthResponse": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "RotateLeaseRequest": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Optional JWT role to target for forced rotation."
+          }
+        },
+        "additionalProperties": false
+      },
+      "AskRequest": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "additionalProperties": false
+      },
+      "AuthTokenRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "AuthTokenResponse": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in"
+        ]
+      },
+      "CibaInitiateRequest": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "integer"
+          },
+          "newStatus": {
+            "type": "string",
+            "enum": [
+              "processing",
+              "shipped",
+              "delivered",
+              "cancelled"
+            ]
+          }
+        },
+        "required": [
+          "orderId",
+          "newStatus"
+        ],
+        "additionalProperties": false
+      },
+      "CibaInitiateResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "authReqId": {
+            "type": "string"
+          },
+          "expiresIn": {
+            "type": "integer"
+          },
+          "interval": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "authReqId",
+          "expiresIn",
+          "interval",
+          "action"
+        ]
+      },
+      "CibaApproveRequest": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "SUCCEED",
+              "CANCELLED"
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "decision"
+        ],
+        "additionalProperties": false
+      },
+      "CibaStatusResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "integer"
+          },
+          "newStatus": {
+            "type": "string"
+          },
+          "age": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sessionId",
+          "status",
+          "action",
+          "orderId",
+          "newStatus",
+          "age"
+        ]
+      },
+      "OrderStatusUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "newStatus": {
+            "type": "string"
+          },
+          "cibaSessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "newStatus",
+          "cibaSessionId"
+        ],
+        "additionalProperties": false
+      },
+      "OrderStatusUpdateResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "orderId": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "cibaSession": {
+            "type": "string"
+          },
+          "writeUser": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "orderId",
+          "status",
+          "cibaSession",
+          "writeUser",
+          "message"
+        ]
+      },
+      "CibaDiagnostics": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "ciba": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "sessions": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "enabled",
+          "ciba",
+          "sessions"
+        ]
+      }
+    }
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Check basic database connectivity",
+        "responses": {
+          "200": {
+            "description": "Database connectivity is healthy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RootStatus"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database check failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Get backend and dependency health",
+        "responses": {
+          "200": {
+            "description": "Backend is available. Status may still be degraded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database connectivity is degraded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": [
+          "Data"
+        ],
+        "summary": "List users",
+        "description": "Optional Bearer auth. Without a token, the backend uses a default read role. With a token, role-aware connector behavior may apply.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "User list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "tags": [
+          "Data"
+        ],
+        "summary": "List orders",
+        "description": "Optional Bearer auth. Results can vary by role and connector trust level.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "Order list. In restricted cases the backend may return an empty array.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Order"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/preferences": {
+      "get": {
+        "tags": [
+          "Data"
+        ],
+        "summary": "List preferences",
+        "description": "Optional Bearer auth. Trust-level filtering controls visible classifications.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "Preference list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Preference"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training": {
+      "get": {
+        "tags": [
+          "Data"
+        ],
+        "summary": "List training records",
+        "description": "Optional Bearer auth. Trust-level filtering controls visible classifications.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "Training list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Training"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tickets": {
+      "get": {
+        "tags": [
+          "Data"
+        ],
+        "summary": "List support tickets",
+        "description": "Optional Bearer auth. Trust-level filtering controls visible classifications.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "Ticket list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Ticket"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "tags": [
+          "Data"
+        ],
+        "summary": "List projects",
+        "description": "Optional Bearer auth. Trust-level filtering controls visible classifications.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "Project list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/credentials": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Inspect active connector and credential metadata",
+        "description": "Optional Bearer auth. Returns connector source, trust level, pool metadata, and CIBA capability signals.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Connector credential resolution failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/lease": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Inspect lease and rotation health",
+        "responses": {
+          "200": {
+            "description": "Lease health data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseHealthResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lease inspection failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/lease/rotate": {
+      "post": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Force connector credential rotation",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateLeaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rotation request completed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Rotation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ask": {
+      "post": {
+        "tags": [
+          "LLM"
+        ],
+        "summary": "Ask a natural-language question against filtered workshop data",
+        "description": "Optional Bearer auth. Response is streamed plain text, not a standard JSON payload.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Streamed text response.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing question.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Backend or Ollama processing failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/token": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Exchange username and password for an access token",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Access token issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Username or password missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Identity provider unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ciba/request": {
+      "post": {
+        "tags": [
+          "CIBA"
+        ],
+        "summary": "Receive delegated authentication requests from Keycloak",
+        "description": "Internal integration route used by Keycloak's HTTP authentication channel provider. Not intended as a normal frontend route.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Delegation request acknowledged."
+          },
+          "401": {
+            "description": "Missing Keycloak bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Delegation processing failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ciba/initiate": {
+      "post": {
+        "tags": [
+          "CIBA"
+        ],
+        "summary": "Start a delegated write approval flow",
+        "description": "Requires Bearer auth and a connector with CIBA write capability enabled.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CibaInitiateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CIBA flow initiated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CibaInitiateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing fields, invalid status, or username could not be derived from JWT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CIBA write support is not enabled for the active connector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Keycloak-side CIBA initiation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ciba/pending": {
+      "get": {
+        "tags": [
+          "CIBA"
+        ],
+        "summary": "List pending approval requests for the authenticated user",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending CIBA requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CIBA write support is not enabled for the active connector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ciba/approve": {
+      "post": {
+        "tags": [
+          "CIBA"
+        ],
+        "summary": "Approve or deny a pending CIBA request",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CibaApproveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approval callback sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid approval request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CIBA write support is not enabled for the active connector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ciba/status/{sessionId}": {
+      "get": {
+        "tags": [
+          "CIBA"
+        ],
+        "summary": "Get CIBA session status",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CIBA session status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CibaStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Session belongs to another user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found or CIBA support is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{id}/status": {
+      "post": {
+        "tags": [
+          "CIBA"
+        ],
+        "summary": "Execute an order status update after successful CIBA approval",
+        "description": "Authenticated, CIBA-gated write route. This route is implemented in the CIBA router but mounted outside the `/ciba` prefix.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderStatusUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order updated successfully through delegated authority.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatusUpdateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing request body fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Session belongs to another user, is not approved, or does not match the requested action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CIBA session not found, order not found, or CIBA support disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Write execution failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ciba/diagnostics": {
+      "get": {
+        "tags": [
+          "CIBA"
+        ],
+        "summary": "Inspect CIBA subsystem diagnostics",
+        "responses": {
+          "200": {
+            "description": "CIBA diagnostics and in-memory session state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CibaDiagnostics"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

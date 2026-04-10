@@ -10,13 +10,19 @@ const log         = require("./logger");
 const { authenticateOptional } = require("./auth");
 const { resolveVaultRole } = require("./roleResolver");
 const cibaRoutes = require("./ciba-routes");
+const openapiRoutes = require("./openapi-routes");
 
 const app         = express();
 const PORT        = process.env.PORT || 3000;
 const OLLAMA_ADDR = process.env.OLLAMA_ADDR || "http://ollama:11434";
+const EXPOSE_ROUTES = process.env.EXPOSE_ROUTES === "true";
 
 app.use(express.json());
 app.use(morgan("combined", { stream: log.stream }));
+
+if (EXPOSE_ROUTES) {
+  app.use(openapiRoutes);
+}
 
 // ---------------------------------------------------------------------------
 // Trust level — derived from the active connector's source field
