@@ -28,6 +28,7 @@ No sensitive values are included here.
 - [Recommended Podman Workflow](#recommended-podman-workflow)
 - [Useful Podman And Compose Commands](#useful-podman-and-compose-commands)
 - [Compatibility Notes](#compatibility-notes)
+- [Troubleshooting The Setup](#troubleshooting-the-setup)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -415,6 +416,136 @@ If you need to optimize the stack under Podman, start with Ollama:
 - memory
 - CPU
 - model downloads
+
+---
+
+## Troubleshooting The Setup
+
+If Podman networking, port forwarding, or Compose state becomes inconsistent, the most reliable recovery path is:
+
+1. stop and remove the Podman machine
+2. recreate it with known-good sizing
+3. start clean
+4. tear down any stale compose state
+5. prune unused Podman networks
+6. bring up a small subset first
+7. verify published ports and in-VM listeners
+
+Important warning:
+
+- `podman machine rm -f` is destructive for that machine
+- machine-local images, volumes, and networks are lost unless separately preserved
+
+### Recommended machine reset sequence
+
+```bash
+podman machine stop
+podman machine rm -f
+
+podman machine init \
+  --cpus 8 \
+  --memory 8192 \
+  --disk-size 120
+
+podman machine start
+```
+
+### Validate the machine and runtime
+
+```bash
+podman machine list
+podman info
+podman ps
+```
+
+### Reset stale Compose networking
+
+```bash
+podman compose down
+podman network prune -f
+```
+
+Then bring up a small target first:
+
+```bash
+podman compose up -d vault
+```
+
+You can then verify published ports from the host:
+
+```bash
+podman ps --format "table {{.Names}}\t{{.Ports}}"
+```
+
+For this workshop, a healthy result should show port mappings such as:
+
+- `zero_trust_vault` -> `8200`
+- `zero_trust_db` -> `5432`
+- `zero_trust_openldap` -> `1389`, `1636`
+- `zero_trust_ldap-admin` -> `8081`
+- `zero_trust_keycloak` -> `8082`
+- `zero_trust_frontend` -> `8088`
+- `zero_trust_backend` -> `3000`
+- `zero_trust_ollama` -> `11434`
+
+`zero_trust_vault_agent` typically has no published host port, which is expected.
+
+### Inspect networking inside the Podman machine
+
+Open a shell into the machine:
+
+```bash
+podman machine ssh
+```
+
+Then inspect listeners, interfaces, and Podman networks:
+
+```bash
+ss -tulnp
+ip addr
+podman network ls
+```
+
+What you want to see:
+
+- `rootlessport` listeners on the expected published ports
+- the Podman machine interface with a valid address
+- workshop networks such as:
+  - `zero_trust_net-frontend`
+  - `zero_trust_net-backend`
+  - `zero_trust_net-data`
+  - `zero_trust_net-egress`
+
+### Verify a real service from the host
+
+For Vault, a good end-to-end connectivity check is:
+
+```bash
+curl -s http://localhost:8200/v1/sys/health | jq
+```
+
+You are looking for:
+
+- `initialized: true`
+- `sealed: false`
+- `standby: false`
+
+That confirms:
+
+- port forwarding from host to machine is working
+- the Vault container is reachable
+- the service itself is healthy enough to answer the health endpoint
+
+### Why this sequence works
+
+This sequence addresses the most common Podman failure modes in workshop setups:
+
+- stale machine networking
+- stale compose-created bridge networks
+- broken host-to-machine port forwarding
+- confusion between host and machine-side listener state
+
+It is a blunt recovery method, but it is effective.
 
 ---
 

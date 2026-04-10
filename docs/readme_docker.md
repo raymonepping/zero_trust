@@ -27,6 +27,7 @@ No sensitive values are included here.
 - [Recommended Docker Workflow](#recommended-docker-workflow)
 - [Useful Docker And Compose Commands](#useful-docker-and-compose-commands)
 - [Operational Notes](#operational-notes)
+- [Troubleshooting The Setup](#troubleshooting-the-setup)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -392,6 +393,127 @@ The Compose file uses internal bridge networks for most traffic. The browser onl
 ### Health checks matter
 
 Several services use health checks and `depends_on` conditions. If one core service is unhealthy, downstream services may wait or restart later than expected.
+
+---
+
+## Troubleshooting The Setup
+
+If Docker networking or port publishing becomes inconsistent, the cleanest recovery path is usually:
+
+1. tear down the Compose stack
+2. prune unused networks
+3. bring up a small subset first
+4. verify published ports
+5. inspect listeners and Docker networks
+6. test a real health endpoint from the host
+
+This is less destructive than a full Docker reset and is usually enough for this workshop.
+
+### Reset the Compose stack and stale networks
+
+```bash
+docker compose down
+docker network prune -f
+```
+
+Then bring up a small target first:
+
+```bash
+docker compose up -d vault
+```
+
+If you want a wider check, bring up more core services after that:
+
+```bash
+docker compose up -d db openldap ldap-admin keycloak backend frontend ollama
+```
+
+### Verify published ports
+
+```bash
+docker ps --format "table {{.Names}}\t{{.Ports}}"
+```
+
+For this workshop, healthy mappings should include ports such as:
+
+- `zero_trust_vault` -> `8200`
+- `zero_trust_db` -> `5432`
+- `zero_trust_openldap` -> `1389`, `1636`
+- `zero_trust_ldap-admin` -> `8081`
+- `zero_trust_keycloak` -> `8082`
+- `zero_trust_frontend` -> `8088`
+- `zero_trust_backend` -> `3000`
+- `zero_trust_ollama` -> `11434`
+
+`zero_trust_vault_agent` usually has no published host port, which is expected.
+
+### Inspect host-side listeners
+
+From the host:
+
+```bash
+lsof -iTCP -sTCP:LISTEN -n -P
+docker network ls
+```
+
+What you want to confirm:
+
+- the expected host ports are listening
+- Docker networks exist for the workshop stack
+
+Expected network names include:
+
+- `zero_trust_net-frontend`
+- `zero_trust_net-backend`
+- `zero_trust_net-data`
+- `zero_trust_net-egress`
+
+### Inspect service state from inside containers
+
+Useful examples:
+
+```bash
+docker exec -it zero_trust_vault sh
+docker exec -it zero_trust_backend sh
+docker exec -it zero_trust_db sh
+```
+
+This helps separate:
+
+- a host port-forwarding problem
+- a Docker networking problem
+- an application problem inside the container
+
+### Verify a real service from the host
+
+For Vault, a good end-to-end check is:
+
+```bash
+curl -s http://localhost:8200/v1/sys/health | jq
+```
+
+You are looking for:
+
+- `initialized: true`
+- `sealed: false`
+- `standby: false`
+
+That confirms:
+
+- host port publishing is working
+- the Vault container is reachable
+- the service itself is healthy enough to answer the health endpoint
+
+### Why this sequence works
+
+This resolves the most common setup failures:
+
+- stale compose-managed networks
+- host port conflicts
+- containers started but not actually reachable
+- confusion between container health and published-port availability
+
+It is a pragmatic first-line recovery method before doing anything more invasive.
 
 ---
 

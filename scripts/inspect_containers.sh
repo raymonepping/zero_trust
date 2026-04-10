@@ -143,6 +143,7 @@ printf '%.0s─' $(seq 1 72); echo
 total_container_bytes=0
 docker ps -a --format "{{.Names}}|{{.Status}}|{{.Size}}|{{.Image}}" 2>/dev/null \
   | grep "^${COMPOSE_PROJECT}_" \
+  | sort \
   | while IFS='|' read -r name status size image; do
       short=$(echo "$name" | sed "s/^${COMPOSE_PROJECT}_//")
       # extract the writable-layer size (before the virtual marker)
@@ -162,8 +163,9 @@ printf "${BOLD}%-40s %10s %s${RESET}\n" "VOLUME" "SIZE" "STATUS"
 printf '%.0s─' $(seq 1 72); echo
 
 total_vol_bytes=0
-for vol_suffix in db_data vault_data vault-agent-secrets ollama_data \
-                  openldap-data openldap-config keycloak_data; do
+for vol_suffix in db_data keycloak_data ollama_data \
+                  openldap-config openldap-data \
+                  vault-agent-secrets vault_data; do
   vol_name="${COMPOSE_PROJECT}_${vol_suffix}"
   exists=$(docker volume ls --format "{{.Name}}" 2>/dev/null \
     | grep -x "$vol_name" || true)

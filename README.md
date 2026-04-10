@@ -17,7 +17,7 @@ The workshop is built around one core idea:
 
 This repository is not just a demo app. It is a progression of security models that you can switch between live by swapping the backend connector.
 
-For the detailed script and subsystem docs, see [index.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/index.md).
+For the detailed script and subsystem docs, see [index.md](./index.md).
 
 ---
 
@@ -498,18 +498,23 @@ The root README is the lab entry point. The detailed subsystem docs live under `
 
 Key docs:
 
-- [index.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/index.md)
-- [readme_switch_connector.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_switch_connector.md)
-- [readme_setup_vault.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_vault.md)
-- [readme_vault_unseal.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_vault_unseal.md)
-- [readme_setup_ldap.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_ldap.md)
-- [readme_setup_keycloak.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_keycloak.md)
-- [readme_setup_ciba_vault.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_ciba_vault.md)
-- [readme_setup_ciba_keycloak.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_setup_ciba_keycloak.md)
-- [readme_seed_db.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_seed_db.md)
-- [readme_inspect_containers.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_inspect_containers.md)
-- [readme_images_build.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_images_build.md)
-- [readme_images_purge.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_images_purge.md)
+- [index.md](./index.md)
+- [docs/readme_frontend.md](./docs/readme_frontend.md)
+- [docs/readme_backend.md](./docs/readme_backend.md)
+- [docs/readme_routes.md](./docs/readme_routes.md)
+- [docs/readme_switch_connector.md](./docs/readme_switch_connector.md)
+- [docs/readme_docker.md](./docs/readme_docker.md)
+- [docs/readme_podman.md](./docs/readme_podman.md)
+- [docs/readme_setup_vault.md](./docs/readme_setup_vault.md)
+- [docs/readme_vault_unseal.md](./docs/readme_vault_unseal.md)
+- [docs/readme_setup_ldap.md](./docs/readme_setup_ldap.md)
+- [docs/readme_setup_keycloak.md](./docs/readme_setup_keycloak.md)
+- [docs/readme_setup_ciba_vault.md](./docs/readme_setup_ciba_vault.md)
+- [docs/readme_setup_ciba_keycloak.md](./docs/readme_setup_ciba_keycloak.md)
+- [docs/readme_seed_db.md](./docs/readme_seed_db.md)
+- [docs/readme_inspect_containers.md](./docs/readme_inspect_containers.md)
+- [docs/readme_images_build.md](./docs/readme_images_build.md)
+- [docs/readme_images_purge.md](./docs/readme_images_purge.md)
 
 ---
 
@@ -534,4 +539,4 @@ Key docs:
 
 ## Final note
 
-If you want the most accurate connector-specific details, use this root README for orientation and then read [readme_switch_connector.md](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docs/readme_switch_connector.md) for the full per-phase explanation.
+If you want the most accurate connector-specific details, use this root README for orientation and then read [docs/readme_switch_connector.md](./docs/readme_switch_connector.md) for the full per-phase explanation.
