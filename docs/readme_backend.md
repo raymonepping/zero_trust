@@ -113,34 +113,34 @@ The backend:
 
 The backend directory currently contains:
 
-- [server.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/server.js)  
+- [server.js](../backend/server.js)  
   Main Express application entry point and route registration.
 
-- [auth.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/auth.js)  
+- [auth.js](../backend/auth.js)  
   JWT verification middleware for required and optional authentication.
 
-- [pool-manager.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/pool-manager.js)  
+- [pool-manager.js](../backend/pool-manager.js)  
   Database pool lifecycle, role-aware pool selection, rotation, and recovery.
 
-- [connector.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/connector.js)  
+- [connector.js](../backend/connector.js)  
   The active credential provider. This file is intentionally swappable.
 
-- [roleResolver.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/roleResolver.js)  
+- [roleResolver.js](../backend/roleResolver.js)  
   Maps JWT realm roles and groups to backend Vault/Postgres role names.
 
-- [ciba.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/ciba.js)  
+- [ciba.js](../backend/ciba.js)  
   In-memory manager for the CIBA lifecycle.
 
-- [ciba-routes.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/ciba-routes.js)  
+- [ciba-routes.js](../backend/ciba-routes.js)  
   Express routes for delegated approval and CIBA-gated writes.
 
-- [logger.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/logger.js)  
+- [logger.js](../backend/logger.js)  
   Winston logger setup and Morgan integration.
 
-- [package.json](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/package.json)  
+- [package.json](../backend/package.json)  
   Runtime dependencies and scripts.
 
-- [Dockerfile](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/Dockerfile)  
+- [Dockerfile](../backend/Dockerfile)  
   Container image definition for the backend.
 
 ---
@@ -155,7 +155,7 @@ The backend runs as:
 
 ### Package scripts
 
-From [package.json](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/package.json):
+From [package.json](../backend/package.json):
 
 ```json
 {
@@ -180,7 +180,7 @@ which means:
 
 ### Docker behavior
 
-From [Dockerfile](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/Dockerfile):
+From [Dockerfile](../backend/Dockerfile):
 
 - base image: `node:25.8.2-alpine3.23`
 - working directory: `/app`
@@ -235,7 +235,7 @@ Browser
 
 ## Authentication Model
 
-User authentication is handled in [auth.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/auth.js).
+User authentication is handled in [auth.js](../backend/auth.js).
 
 This module verifies Bearer tokens and attaches:
 
@@ -297,7 +297,7 @@ The backend enforces access using two independent layers.
 
 ### 1. Trust level
 
-In [server.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/server.js), trust level is derived from the active connector `source`.
+In [server.js](../backend/server.js), trust level is derived from the active connector `source`.
 
 Current trust mapping:
 
@@ -326,7 +326,7 @@ The backend uses this for SQL filtering, especially in routes like:
 
 ### 2. Role scoping
 
-[roleResolver.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/roleResolver.js) maps JWT claims and groups to canonical Vault/Postgres role names:
+[roleResolver.js](../backend/roleResolver.js) maps JWT claims and groups to canonical Vault/Postgres role names:
 
 - `viewer-read`
 - `support-read`
@@ -349,13 +349,13 @@ That provides defense in depth.
 
 The active connector is imported from:
 
-- [connector.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/connector.js)
+- [connector.js](../backend/connector.js)
 
 This file is swapped by `switch_connector.sh`.
 
 ### Connector compatibility shims
 
-The backend has to work across older and newer connector generations. Because of that, [server.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/server.js) and [pool-manager.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/pool-manager.js) include compatibility fallbacks when connectors do not implement newer helpers.
+The backend has to work across older and newer connector generations. Because of that, [server.js](../backend/server.js) and [pool-manager.js](../backend/pool-manager.js) include compatibility fallbacks when connectors do not implement newer helpers.
 
 This is important for the workshop because:
 
@@ -364,7 +364,7 @@ This is important for the workshop because:
 
 ### Pool manager responsibilities
 
-[pool-manager.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/pool-manager.js) is one of the most important modules in the backend.
+[pool-manager.js](../backend/pool-manager.js) is one of the most important modules in the backend.
 
 It is responsible for:
 
@@ -448,7 +448,7 @@ This includes:
 
 ## API Surface
 
-The backend’s main routes are registered in [server.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/server.js).
+The backend’s main routes are registered in [server.js](../backend/server.js).
 
 ### Health and diagnostics
 
@@ -519,7 +519,7 @@ Mounted under:
 
 - `/ciba`
 
-These are implemented in [ciba-routes.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/ciba-routes.js).
+These are implemented in [ciba-routes.js](../backend/ciba-routes.js).
 
 They are described in detail below.
 
@@ -579,8 +579,8 @@ The final workshop phase adds delegated write approval through CIBA.
 
 This is implemented across:
 
-- [ciba.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/ciba.js)
-- [ciba-routes.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/ciba-routes.js)
+- [ciba.js](../backend/ciba.js)
+- [ciba-routes.js](../backend/ciba-routes.js)
 
 ### What CIBA is doing here
 
@@ -713,7 +713,7 @@ The exact connector-related variables depend on which connector is currently act
 
 ## Logging
 
-Logging is handled by [logger.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/backend/logger.js) using Winston.
+Logging is handled by [logger.js](../backend/logger.js) using Winston.
 
 ### Development mode
 

@@ -60,25 +60,25 @@ It is not a general-purpose admin console. It is a lab interface designed to mak
 
 The `frontend/` directory is intentionally small.
 
-- [frontend/package.json](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/package.json)  
+- [frontend/package.json](../frontend/package.json)  
   Package metadata, React/Vite dependencies, and the dev/build scripts.
 
-- [frontend/vite.config.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/vite.config.js)  
+- [frontend/vite.config.js](../frontend/vite.config.js)  
   Vite config, dev server binding, and proxy rules for `/api/*`.
 
-- [frontend/Dockerfile](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/Dockerfile)  
+- [frontend/Dockerfile](../frontend/Dockerfile)  
   Container image used by Docker Compose for the live frontend.
 
-- [frontend/index.html](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/index.html)  
+- [frontend/index.html](../frontend/index.html)  
   Root HTML shell that Vite uses to mount the React app.
 
-- [frontend/src/main.jsx](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/src/main.jsx)  
+- [frontend/src/main.jsx](../frontend/src/main.jsx)  
   React entry point. Mounts `App` inside `StrictMode`.
 
-- [frontend/src/App.jsx](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/src/App.jsx)  
+- [frontend/src/App.jsx](../frontend/src/App.jsx)  
   The main application component. Nearly all frontend behavior lives here.
 
-- [frontend/src/index.css](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/src/index.css)  
+- [frontend/src/index.css](../frontend/src/index.css)  
   Global styles, layout, cards, forms, status badges, and responsive behavior.
 
 ---
@@ -92,7 +92,7 @@ The frontend runs as:
 - a single-page application
 - usually inside a Docker container during the workshop
 
-From [frontend/package.json](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/package.json):
+From [frontend/package.json](../frontend/package.json):
 
 ```json
 {
@@ -110,7 +110,7 @@ This means:
 - `npm run build` produces a static production bundle
 - `npm run preview` serves the built output locally
 
-The React entry point is minimal. [frontend/src/main.jsx](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/src/main.jsx) mounts one root component:
+The React entry point is minimal. [frontend/src/main.jsx](../frontend/src/main.jsx) mounts one root component:
 
 ```jsx
 createRoot(document.getElementById('root')).render(
@@ -133,7 +133,7 @@ So in practical terms:
 
 The frontend does not embed backend URLs directly in every fetch call. Instead, Vite proxies `/api/*` traffic during development and in the containerized workshop setup.
 
-From [frontend/vite.config.js](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/vite.config.js):
+From [frontend/vite.config.js](../frontend/vite.config.js):
 
 - `/api/auth` proxies to the backend with no timeout
 - `/api/ask` proxies to the backend with no timeout
@@ -160,7 +160,7 @@ That makes local debugging and workshop demos easier because the browser gets a 
 
 ## Application State Model
 
-Most frontend behavior lives in [frontend/src/App.jsx](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/src/App.jsx).
+Most frontend behavior lives in [frontend/src/App.jsx](../frontend/src/App.jsx).
 
 The component tracks several state groups:
 
@@ -418,7 +418,7 @@ From a teaching perspective, this is the point where the frontend stops being on
 
 ## UI Structure
 
-The main screen in [frontend/src/App.jsx](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/src/App.jsx) is built around a few major sections.
+The main screen in [frontend/src/App.jsx](../frontend/src/App.jsx) is built around a few major sections.
 
 ### Top session bar
 
@@ -470,7 +470,7 @@ This layout is intentionally compact. Students can see trust posture, query inte
 
 ## Styling Model
 
-All styling currently lives in [frontend/src/index.css](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/src/index.css).
+All styling currently lives in [frontend/src/index.css](../frontend/src/index.css).
 
 The design language is consistent with the workshop theme:
 
@@ -495,7 +495,7 @@ This is a hand-rolled UI rather than a framework-styled dashboard. That keeps th
 
 The frontend is usually run via Docker Compose, not just with a local `npm run dev`.
 
-From [frontend/Dockerfile](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/Dockerfile):
+From [frontend/Dockerfile](../frontend/Dockerfile):
 
 - base image: `node:25.8.2-alpine3.23`
 - installs `curl`
@@ -503,7 +503,7 @@ From [frontend/Dockerfile](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop
 - exposes port `5173`
 - starts with `npm run --silent dev`
 
-From [docker-compose.yml](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/docker-compose.yml):
+From [docker-compose.yml](../docker-compose.yml):
 
 - `./frontend` is bind-mounted into `/app`
 - `/app/node_modules` is kept inside the container so the bind mount does not overwrite dependencies
@@ -650,6 +650,6 @@ Remember that `/api/ask` is streamed. Failures may look different from normal JS
 
 ### Connector label in the UI looks wrong
 
-If a new connector was added but the UI label does not match, update the source metadata mapping in [frontend/src/App.jsx](/Users/raymon.epping/Documents/VSC/HashiCorp/workshop/zero_trust/frontend/src/App.jsx).
+If a new connector was added but the UI label does not match, update the source metadata mapping in [frontend/src/App.jsx](../frontend/src/App.jsx).
 
 That mapping is what turns backend source identifiers into the readiness-panel badge text.
