@@ -1,0 +1,12 @@
+[
+  {
+    "id": 7,
+    "first_name": "John",
+    "last_name": "Rambo",
+    "email": "jrambo@my.org",
+    "phone": "+34 91 1234567",
+    "city": "San Jose",
+    "country": "United States of America",
+    "joined": "2023-05-10"
+  }
+]

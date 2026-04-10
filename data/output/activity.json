@@ -1,0 +1,99 @@
+{
+  "orders": [
+    {
+      "user_id": 7,
+      "item": "Noise-Cancelling Headset – Jabra Evolve2 85",
+      "category": "Tech",
+      "quantity": 1,
+      "price": 497.95,
+      "ordered_at": "2025-06-23",
+      "classification": "public"
+    },
+    {
+      "user_id": 7,
+      "item": "Noise-Cancelling Headset – Jabra Evolve2 85",
+      "category": "Tech",
+      "quantity": 1,
+      "price": 497.50,
+      "ordered_at": "2025-05-31",
+      "classification": "internal"
+    },
+    {
+      "user_id": 7,
+      "item": "AWS Solutions Architect Exam Voucher",
+      "category": "Education",
+      "quantity": 1,
+      "price": 154.99,
+      "ordered_at": "2024-12-24",
+      "classification": "public"
+    },
+    {
+      "user_id": 7,
+      "item": "Customer Journey Research Panel – Benelux",
+      "category": "Research",
+      "quantity": 1,
+      "price": 3047.00,
+      "ordered_at": "2025-08-31",
+      "classification": "confidential"
+    },
+    {
+      "user_id": 7,
+      "item": "Nike Air Zoom Pegasus 41",
+      "category": "Sports",
+      "quantity": 1,
+      "price": 119.99,
+      "ordered_at": "2026-01-11",
+      "classification": "internal"
+    }
+  ],
+  "preferences": [
+    {
+      "user_id": 7,
+      "category": "Music",
+      "value": "Classical, Opera, Baroque",
+      "classification": "public"
+    },
+    {
+      "user_id": 7,
+      "category": "Sports",
+      "value": "Basketball, Surfing, Rock Climbing",
+      "classification": "public"
+    },
+    {
+      "user_id": 7,
+      "category": "Cuisine",
+      "value": "Peruvian, Chinese, Turkish",
+      "classification": "public"
+    },
+    {
+      "user_id": 7,
+      "category": "Tech Interests",
+      "value": "Virtualisation, Storage, Cloud Infrastructure",
+      "classification": "internal"
+    },
+    {
+      "user_id": 7,
+      "category": "Travel",
+      "value": "Peru, Kenya, Georgia",
+      "classification": "public"
+    },
+    {
+      "user_id": 7,
+      "category": "Salary Band",
+      "value": "L4 – Senior Engineer",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 7,
+      "category": "Security Clearance",
+      "value": "Level 5 – Top Secret",
+      "classification": "restricted"
+    },
+    {
+      "user_id": 7,
+      "category": "Project",
+      "value": "Data Classification Programme",
+      "classification": "confidential"
+    }
+  ]
+}

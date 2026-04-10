@@ -10,7 +10,7 @@ Usage:
 Description:
   Basic sanity checks to confirm the local Vault setup is running, reachable,
   and unsealed. If VAULT_TOKEN is available, also lists enabled secrets engines
-  and auth methods.
+  and auth methods, and verifies workshop-specific mounts are present.
 EOF
 }
 
@@ -24,6 +24,10 @@ error() {
 
 warn() {
   printf 'WARN %s\n' "$*" >&2
+}
+
+ok() {
+  printf 'OK  %s\n' "$*"
 }
 
 container_status() {
@@ -42,6 +46,7 @@ container_status() {
 
 VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}"
 VAULT_CONTAINER="${VAULT_CONTAINER:-zero_trust_vault}"
+VAULT_AGENT_CONTAINER="${VAULT_AGENT_CONTAINER:-zero_trust_vault_agent}"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
@@ -60,17 +65,27 @@ info "Vault container status"
 printf '%s %s\n' "${VAULT_CONTAINER}" "$(container_status "${VAULT_CONTAINER}")"
 
 printf '\n'
+info "Vault Agent container status"
+printf '%s %s\n' "${VAULT_AGENT_CONTAINER}" "$(container_status "${VAULT_AGENT_CONTAINER}")"
+
+# /v1/sys/health returns 503 when sealed and 501 when uninitialised — do NOT
+# use curl -f here, it would exit non-zero before we can report anything useful.
+printf '\n'
 info "Vault host reachability"
-curl -sSf -o /dev/null "${VAULT_ADDR}/v1/sys/health"
-printf '%s\n' "${VAULT_ADDR}"
+health_json=$(curl -s "${VAULT_ADDR}/v1/sys/health" 2>/dev/null || true)
+if [[ -z "${health_json}" ]]; then
+  error "Vault is not reachable at ${VAULT_ADDR} (connection refused or timeout)"
+  exit 1
+fi
+ok "${VAULT_ADDR}"
 
 printf '\n'
 info "Vault health summary"
-curl -sSf "${VAULT_ADDR}/v1/sys/health" | jq '{initialized, sealed, standby, version, enterprise, cluster_name}'
+echo "${health_json}" | jq '{initialized, sealed, standby, version, enterprise, cluster_name}'
 
-sealed_state="$(curl -sSf "${VAULT_ADDR}/v1/sys/health" | jq -r '.sealed')"
+sealed_state="$(echo "${health_json}" | jq -r '.sealed')"
 if [[ "${sealed_state}" != "false" ]]; then
-  warn "Vault is reachable but still sealed."
+  warn "Vault is reachable but still sealed — run ./scripts/unseal_vault.sh"
 fi
 
 if ! command -v vault >/dev/null 2>&1; then
@@ -86,24 +101,46 @@ if [[ -z "${VAULT_TOKEN:-}" ]]; then
 fi
 
 printf '\n'
-info "Vault token lookup sanity"
-vault token lookup >/dev/null
-printf '%s\n' "VAULT_TOKEN is valid"
+info "Vault token details"
+vault token lookup | grep -E '^\s*(display_name|policies|ttl|expire_time|meta)'
 
 printf '\n'
 info "Enabled secrets engines"
 vault secrets list
 
 printf '\n'
+info "Workshop mount check"
+for mount in secret/ database/ sys/; do
+  if vault secrets list | grep -q "^${mount}"; then
+    ok "${mount}"
+  else
+    warn "${mount} not found — setup_vault.sh may not have run"
+  fi
+done
+
+printf '\n'
 info "Enabled auth methods"
 vault auth list
 
 printf '\n'
+info "Workshop auth method check"
+for method in approle/ jwt/ ldap/; do
+  if vault auth list | grep -q "^${method}"; then
+    ok "${method}"
+  else
+    warn "${method} not found — setup_vault.sh may not have run"
+  fi
+done
+
+printf '\n'
+info "Vault Agent rendered credentials"
+docker exec "${VAULT_AGENT_CONTAINER}" sh -c \
+  'test -f /vault/secrets/db-creds.json && echo "db-creds.json present" || echo "db-creds.json missing"'
+
+printf '\n'
 info "Summary"
-printf '%s\n' "Vault is reachable from the host."
 if [[ "${sealed_state}" == "false" ]]; then
-  printf '%s\n' "Vault is unsealed."
+  printf '%s\n' "Vault is reachable and unsealed."
 else
-  printf '%s\n' "Vault is still sealed."
+  printf '%s\n' "Vault is reachable but sealed."
 fi
-printf '%s\n' "Secrets and auth mount listings were printed because VAULT_TOKEN is available."

@@ -1,0 +1,12 @@
+[
+  {
+    "id": 7,
+    "first_name": "John",
+    "last_name": "Rambo",
+    "email": "jrambo@my.org",
+    "phone": "+1 503 5550177",
+    "city": "Portland",
+    "country": "United States",
+    "joined": "2024-02-14"
+  }
+]

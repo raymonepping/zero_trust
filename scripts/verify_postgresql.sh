@@ -10,7 +10,7 @@ Usage:
 Description:
   Verifies that the workshop PostgreSQL volume exists and that the db container
   is mounted to it. If psql is installed locally, it also checks database
-  connectivity, roles, and the main workshop tables.
+  connectivity, roles, table presence, row counts, and RLS policies.
 
 Examples:
   ./scripts/verify_postgresql.sh
@@ -72,6 +72,10 @@ if [[ "${runtime}" == "podman" ]] && ! podman compose version >/dev/null 2>&1; t
   exit 1
 fi
 
+# Hardcode the compose project name — deriving it from the directory name breaks
+# when the repo is cloned to a differently named folder.
+COMPOSE_PROJECT="zero_trust"
+
 info "Compose volumes"
 "${compose_cmd[@]}" -f "${repo_root}/docker-compose.yml" config --volumes
 
@@ -82,10 +86,8 @@ if [[ -z "${db_volume}" ]]; then
   exit 1
 fi
 
-project_name="$(basename "${repo_root}")"
-
-full_volume_name="${project_name}_${db_volume}"
-container_name="${project_name}_db"
+full_volume_name="${COMPOSE_PROJECT}_${db_volume}"
+container_name="${COMPOSE_PROJECT}_db"
 db_host="${PGHOST:-127.0.0.1}"
 db_port="${PGPORT:-5432}"
 db_name="${PGDATABASE:-appdb}"
@@ -94,16 +96,20 @@ db_password="${PGPASSWORD:-apppassword}"
 
 printf '\n'
 info "Matching volume"
-"${runtime}" volume ls | grep "${db_volume}" || true
+"${runtime}" volume ls | grep "${full_volume_name}" || warn "Volume ${full_volume_name} not found — stack may not be running"
 
 printf '\n'
 info "Inspecting volume ${full_volume_name}"
-"${runtime}" volume inspect "${full_volume_name}"
+if [[ "${runtime}" == "docker" ]]; then
+  docker volume inspect "${full_volume_name}" | jq '.[0] | {Name, Driver, Mountpoint, CreatedAt}'
+else
+  podman volume inspect "${full_volume_name}"
+fi
 
 printf '\n'
 info "Inspecting container mounts for ${container_name}"
 if [[ "${runtime}" == "docker" ]]; then
-  docker inspect "${container_name}" --format '{{json .Mounts}}'
+  docker inspect "${container_name}" --format '{{json .Mounts}}' | jq '.[] | {Type, Name, Destination}'
 else
   podman inspect "${container_name}"
 fi
@@ -134,7 +140,7 @@ PGPASSWORD="${db_password}" psql \
   -p "${db_port}" \
   -U "${db_user}" \
   -d "${db_name}" \
-  -c "SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname IN ('appuser', 'viewer-read', 'support-read', 'admin-read') ORDER BY rolname;"
+  -c "SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname IN ('appuser', 'viewer-read', 'support-read', 'support-write', 'admin-read') ORDER BY rolname;"
 
 printf '\n'
 info "PostgreSQL public table inventory"
@@ -146,3 +152,25 @@ PGPASSWORD="${db_password}" psql \
   -U "${db_user}" \
   -d "${db_name}" \
   -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;"
+
+printf '\n'
+info "Row counts (confirms seed_db.sh ran)"
+PGPASSWORD="${db_password}" psql \
+  -X \
+  -P pager=off \
+  -h "${db_host}" \
+  -p "${db_port}" \
+  -U "${db_user}" \
+  -d "${db_name}" \
+  -c "SELECT relname AS table, n_live_tup AS rows FROM pg_stat_user_tables ORDER BY relname;"
+
+printf '\n'
+info "RLS policy check"
+PGPASSWORD="${db_password}" psql \
+  -X \
+  -P pager=off \
+  -h "${db_host}" \
+  -p "${db_port}" \
+  -U "${db_user}" \
+  -d "${db_name}" \
+  -c "SELECT tablename, policyname, roles, cmd FROM pg_policies ORDER BY tablename, policyname;"

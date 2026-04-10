@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+Usage:
+  ./scripts/seed_db.sh [--data-dir <dir>]
+
+Options:
+  --data-dir <dir>   Directory containing users.json, activity.json,
+                     projects.json, tickets.json, training.json
+                     (default: ./data)
+  -h, --help         Show this help
+
+Examples:
+  ./scripts/seed_db.sh
+  ./scripts/seed_db.sh --data-dir data/output
+EOF
+}
+
 # ---------------------------------------------------------------------------
 # Configuration – override via env vars if needed
 # ---------------------------------------------------------------------------
@@ -11,6 +28,28 @@ DB_USER="${DB_USER:-appuser}"
 DB_PASS="${DB_PASS:-apppassword}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${SCRIPT_DIR}/../data"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --data-dir)
+      DATA_DIR="${2:?--data-dir requires a value}"
+      # Resolve relative paths against the caller's working directory
+      [[ "$DATA_DIR" != /* ]] && DATA_DIR="$(pwd)/${DATA_DIR}"
+      shift 2
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "ERROR: Unknown argument: $1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+if [[ ! -d "$DATA_DIR" ]]; then
+  echo "ERROR: Data directory not found: ${DATA_DIR}" >&2
+  exit 1
+fi
+
+for f in users.json activity.json projects.json tickets.json training.json; do
+  [[ -f "${DATA_DIR}/${f}" ]] || { echo "ERROR: Missing ${DATA_DIR}/${f}" >&2; exit 1; }
+done
 
 export PGPASSWORD="${DB_PASS}"
 PSQL="psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME}"

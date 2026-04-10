@@ -1,0 +1,20 @@
+[
+  {
+    "user_id": 7,
+    "project_name": "Vault Migration Wave 2",
+    "role": "Implementation Lead",
+    "budget": 142000,
+    "start_date": "2025-03-05",
+    "status": "active",
+    "classification": "restricted"
+  },
+  {
+    "user_id": 7,
+    "project_name": "Cloud Boundary Enforcement Project",
+    "role": "SRE Lead",
+    "budget": 198000,
+    "start_date": "2025-08-02",
+    "status": "planning",
+    "classification": "internal"
+  }
+]

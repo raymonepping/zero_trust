@@ -8,8 +8,8 @@ Usage:
   ./scripts/verify_keycloak.sh
 
 Description:
-  Basic sanity checks to confirm the local Keycloak setup is ready for
-  ./scripts/setup_keycloak.sh.
+  Sanity checks to confirm Keycloak is running, reachable, and that
+  ./scripts/setup_keycloak.sh has run successfully.
 EOF
 }
 
@@ -23,6 +23,10 @@ error() {
 
 warn() {
   printf 'WARN %s\n' "$*" >&2
+}
+
+ok() {
+  printf 'OK  %s\n' "$*"
 }
 
 container_status() {
@@ -43,7 +47,7 @@ KEYCLOAK_URL="${KC_URL:-http://localhost:8082}"
 ADMIN_USER="${KC_ADMIN_USER:-admin}"
 ADMIN_PASS="${KC_ADMIN_PASS:-admin}"
 KEYCLOAK_CONTAINER="${KC_CONTAINER:-zero_trust_keycloak}"
-OPENLDAP_CONTAINER="${LDAP_CONTAINER:-zero_trust_openldap}"
+OPENLDAP_CONTAINER="${OPENLDAP_CONTAINER:-zero_trust_openldap}"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
@@ -68,16 +72,17 @@ printf '%s %s\n' "${OPENLDAP_CONTAINER}" "$(container_status "${OPENLDAP_CONTAIN
 printf '\n'
 info "Keycloak host reachability"
 curl -sSf -o /dev/null "${KEYCLOAK_URL}"
-printf '%s\n' "${KEYCLOAK_URL}"
+ok "${KEYCLOAK_URL}"
 
 printf '\n'
-info "Keycloak master realm metadata"
-curl -sSf "${KEYCLOAK_URL}/realms/master/.well-known/openid-configuration" | jq '{issuer, authorization_endpoint, token_endpoint}'
+info "Keycloak master realm OIDC metadata"
+curl -sSf "${KEYCLOAK_URL}/realms/master/.well-known/openid-configuration" \
+  | jq '{issuer, authorization_endpoint, token_endpoint}'
 
 printf '\n'
 info "kcadm availability inside container"
 docker exec "${KEYCLOAK_CONTAINER}" test -x /opt/keycloak/bin/kcadm.sh
-printf '%s\n' "/opt/keycloak/bin/kcadm.sh"
+ok "/opt/keycloak/bin/kcadm.sh"
 
 printf '\n'
 info "Keycloak admin login sanity"
@@ -86,7 +91,7 @@ docker exec "${KEYCLOAK_CONTAINER}" /opt/keycloak/bin/kcadm.sh config credential
   --realm master \
   --user "${ADMIN_USER}" \
   --password "${ADMIN_PASS}" >/dev/null 2>&1
-printf '%s\n' "Authenticated with bootstrap admin credentials"
+ok "Authenticated with bootstrap admin credentials"
 
 printf '\n'
 info "Summary"
