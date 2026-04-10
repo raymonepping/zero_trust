@@ -120,8 +120,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      vault:
-        condition: service_healthy
     networks:
       - net-backend
       - net-data
