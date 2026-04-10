@@ -171,7 +171,7 @@ The stack publishes these host ports:
 | ---- | ------- | ----- |
 | `3000` | backend | main API |
 | `5432` | db | PostgreSQL |
-| `8081` | ldap-admin | phpLDAPadmin |
+| `8081` | ldap-admin | optional phpLDAPadmin |
 | `8082` | keycloak | Keycloak web UI |
 | `8088` | frontend | Vite UI default host port |
 | `8200` | vault | Vault HTTP API |
@@ -279,7 +279,19 @@ podman compose version
 ### 4. Start foundation services
 
 ```bash
-podman compose up -d db openldap ldap-admin keycloak
+podman compose up -d db openldap keycloak
+```
+
+Start the optional LDAP admin UI only when needed:
+
+```bash
+podman compose up -d ldap-admin
+```
+
+or start all profile-gated tooling:
+
+```bash
+podman compose --profile tools up -d
 ```
 
 ### 5. Run repository setup scripts from the host
@@ -574,7 +586,7 @@ For this workshop, a healthy result should show port mappings such as:
 - `zero_trust_vault` -> `8200`
 - `zero_trust_db` -> `5432`
 - `zero_trust_openldap` -> `1389`, `1636`
-- `zero_trust_ldap-admin` -> `8081`
+- `zero_trust_ldap-admin` -> `8081` when the optional `tools` profile service is running
 - `zero_trust_keycloak` -> `8082`
 - `zero_trust_frontend` -> `8088`
 - `zero_trust_backend` -> `3000`

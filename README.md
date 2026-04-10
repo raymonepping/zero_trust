@@ -124,7 +124,7 @@ Four Docker networks enforce strict traffic boundaries. Services can only talk t
 | ------- | -------- | ------- |
 | `net-frontend` | `frontend` | Isolates the UI from everything except the browser |
 | `net-backend` | `frontend`, `backend` | The only path from frontend to the API |
-| `net-data` | `backend`, `db`, `vault`, `vault-agent`, `ollama`, `openldap`, `ldap-admin`, `keycloak` | All internal service communication |
+| `net-data` | `backend`, `db`, `vault`, `vault-agent`, `ollama`, `openldap`, `ldap-admin`, `keycloak` | All internal service communication; `ldap-admin` is optional and profile-gated |
 | `net-egress` | `ollama` | Allows model pulls from the internet; all other services are isolated |
 
 **Key consequences of this model:**
@@ -146,7 +146,7 @@ Four Docker networks enforce strict traffic boundaries. Services can only talk t
 | `vault` | `hashicorp/vault-enterprise` | `8200` | Secrets engine, auth methods, dynamic credentials, audit log |
 | `vault-agent` | `hashicorp/vault-enterprise` | — | Sidecar: authenticates to Vault, renders `db-creds.json` to shared volume |
 | `openldap` | `osixia/openldap` | `1389` | User directory — source of truth for identities and group membership |
-| `ldap-admin` | `osixia/phpldapadmin` | `8081` | Web UI for browsing the LDAP directory |
+| `ldap-admin` | `osixia/phpldapadmin` | `8081` | Optional LDAP admin UI, started through the `tools` profile or on demand |
 | `keycloak` | `quay.io/keycloak/keycloak` | `8082` | OIDC provider — JWT issuance, role mapping, CIBA backchannel auth |
 | `ollama` | `./ollama` | `11434` | Local LLM (llama3.2 + nomic-embed-text) for `/api/ask` |
 
@@ -268,7 +268,19 @@ The first launch should come up in the baseline `wired` configuration.
 Start the core services required before backend and frontend:
 
 ```bash
-docker compose up -d db openldap ldap-admin keycloak
+docker compose up -d db openldap keycloak
+```
+
+If you want the optional LDAP admin UI as well:
+
+```bash
+docker compose up -d ldap-admin
+```
+
+or:
+
+```bash
+docker compose --profile tools up -d
 ```
 
 ### 2. Load the workshop data
@@ -452,7 +464,7 @@ docker compose up -d
 Start only the early-lab services:
 
 ```bash
-docker compose up -d db openldap ldap-admin keycloak backend frontend
+docker compose up -d db openldap keycloak backend frontend
 ```
 
 Show current connector:

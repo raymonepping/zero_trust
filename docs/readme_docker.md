@@ -72,7 +72,7 @@ The Compose stack defines these services:
 | `backend` | Express API | `3000` |
 | `frontend` | Vite UI | `8088` by default |
 | `openldap` | LDAP directory | `1389`, `1636` |
-| `ldap-admin` | phpLDAPadmin UI | `8081` |
+| `ldap-admin` | optional phpLDAPadmin UI | `8081` |
 | `keycloak` | OIDC and CIBA provider | `8082` |
 
 There are also four Docker networks:
@@ -277,7 +277,19 @@ docker compose version
 ### 2. Start the foundation services
 
 ```bash
-docker compose up -d db openldap ldap-admin keycloak
+docker compose up -d db openldap keycloak
+```
+
+Start the optional LDAP admin UI only when needed:
+
+```bash
+docker compose up -d ldap-admin
+```
+
+or start all profile-gated tooling:
+
+```bash
+docker compose --profile tools up -d
 ```
 
 ### 3. Seed and configure the lab
@@ -517,7 +529,13 @@ docker compose up -d vault
 If you want a wider check, bring up more core services after that:
 
 ```bash
-docker compose up -d db openldap ldap-admin keycloak backend frontend ollama
+docker compose up -d db openldap keycloak backend frontend ollama
+```
+
+Start `ldap-admin` separately only if you need the optional LDAP UI:
+
+```bash
+docker compose up -d ldap-admin
 ```
 
 ### Verify published ports
@@ -531,7 +549,7 @@ For this workshop, healthy mappings should include ports such as:
 - `zero_trust_vault` -> `8200`
 - `zero_trust_db` -> `5432`
 - `zero_trust_openldap` -> `1389`, `1636`
-- `zero_trust_ldap-admin` -> `8081`
+- `zero_trust_ldap-admin` -> `8081` when the optional `tools` profile service is running
 - `zero_trust_keycloak` -> `8082`
 - `zero_trust_frontend` -> `8088`
 - `zero_trust_backend` -> `3000`

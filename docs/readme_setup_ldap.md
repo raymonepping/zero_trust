@@ -27,6 +27,51 @@ PostgreSQL (Row Level Security)
 
 ---
 
+## OpenLDAP vs LDAP Admin
+
+For the workshop, only `openldap` is required for the identity flow.
+
+The `ldap-admin` service is optional. It exists to provide the phpLDAPadmin web UI for browsing and inspecting the directory manually.
+
+In the current Compose setup, `ldap-admin` is profile-gated:
+
+- service name: `ldap-admin`
+- profile: `tools`
+
+That means:
+
+- a normal `docker compose up -d` does not have to start it
+- you can start it only when you need the web UI
+
+Examples:
+
+```bash
+docker compose up -d openldap
+docker compose up -d ldap-admin
+```
+
+or:
+
+```bash
+docker compose --profile tools up -d
+```
+
+The same idea applies with Podman:
+
+```bash
+podman compose up -d openldap
+podman compose up -d ldap-admin
+```
+
+You only need `ldap-admin` when you want a browser-based inspection tool. It is not required for:
+
+- `setup_ldap.sh`
+- Keycloak federation
+- JWT issuance
+- backend authorization flow
+
+---
+
 ## Configuration defaults
 
 ```bash
@@ -344,4 +389,4 @@ ldapsearch -x -H ldap://localhost:1389 \
   "(objectClass=*)"
 ```
 
-Or use the phpLDAPadmin web UI at `http://localhost:8081` — log in as `cn=admin,dc=my,dc=org` with password `admin`.
+Or use the optional phpLDAPadmin web UI at `http://localhost:8081` after starting `ldap-admin` — log in as `cn=admin,dc=my,dc=org` with password `admin`.
