@@ -8,6 +8,7 @@ KEYCLOAK_URL="${KC_URL:-http://localhost:8080}"
 ADMIN_USER="${KC_ADMIN_USER:-admin}"
 ADMIN_PASS="${KC_ADMIN_PASS:-admin}"
 KEYCLOAK_CONTAINER="${KC_CONTAINER:-zero_trust_keycloak}"
+runtime="${CONTAINER_RUNTIME:-docker}"
 TARGET_REALM="zero-trust"
 BACKEND_CLIENT_ID="backend"
 
@@ -25,7 +26,7 @@ ok()   { echo "         ✓ $*"; }
 skip() { echo "         – $* (already configured)"; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
 
-kcadm() { docker exec "${KEYCLOAK_CONTAINER}" /opt/keycloak/bin/kcadm.sh "$@"; }
+kcadm() { "${runtime}" exec "${KEYCLOAK_CONTAINER}" /opt/keycloak/bin/kcadm.sh "$@"; }
 
 usage() {
   cat <<EOF
@@ -38,7 +39,8 @@ OPTIONS:
   -u, --url URL           Keycloak base URL (default: ${KEYCLOAK_URL})
   -U, --admin-user USER   Admin username (default: ${ADMIN_USER})
   -P, --admin-pass PASS   Admin password
-  -c, --container NAME    Docker container (default: ${KEYCLOAK_CONTAINER})
+  -c, --container NAME    Container name (default: ${KEYCLOAK_CONTAINER})
+  -r, --runtime RUNTIME   Container runtime: docker or podman (default: docker)
   -h, --help              Show this help
 
 EOF
@@ -54,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     -U|--admin-user)   ADMIN_USER="$2";   shift 2 ;;
     -P|--admin-pass)   ADMIN_PASS="$2";   shift 2 ;;
     -c|--container)    KEYCLOAK_CONTAINER="$2"; shift 2 ;;
+    -r|--runtime)      runtime="$2";            shift 2 ;;
     -h|--help)         usage ;;
     *) echo "Unknown option: $1" >&2; usage ;;
   esac
@@ -62,11 +65,16 @@ done
 # ---------------------------------------------------------------------------
 # Prerequisites
 # ---------------------------------------------------------------------------
-command -v docker >/dev/null 2>&1 || fail "docker not found"
-command -v jq     >/dev/null 2>&1 || fail "jq not found"
-command -v curl   >/dev/null 2>&1 || fail "curl not found"
+case "${runtime}" in
+  docker|podman) ;;
+  *) fail "Unsupported runtime '${runtime}'. Use docker or podman." ;;
+esac
 
-docker inspect "${KEYCLOAK_CONTAINER}" >/dev/null 2>&1 \
+command -v "${runtime}" >/dev/null 2>&1 || fail "${runtime} not found"
+command -v jq           >/dev/null 2>&1 || fail "jq not found"
+command -v curl         >/dev/null 2>&1 || fail "curl not found"
+
+"${runtime}" inspect "${KEYCLOAK_CONTAINER}" >/dev/null 2>&1 \
   || fail "Container '${KEYCLOAK_CONTAINER}' is not running."
 
 # ---------------------------------------------------------------------------

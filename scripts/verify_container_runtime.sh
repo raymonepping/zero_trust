@@ -1110,9 +1110,9 @@ check_container_health() {
         info "Wait for HEALTHCHECK interval to elapse, then re-run"
         ;;
       none)
-        # Some upstream images don't ship a HEALTHCHECK — downgrade to info for known ones
-        if echo "$image" | grep -qE "keycloak|osixia|moby/buildkit"; then
-          info "Container: ${name} — no HEALTHCHECK (upstream image: ${image})"
+        # Some upstream images don't ship a HEALTHCHECK — keep that informational for known cases.
+        if echo "$image" | grep -qE '(^|/)(keycloak|osixia)(:|$)|moby/buildkit'; then
+          info "Container: ${name} — no HEALTHCHECK (expected for upstream image: ${image})"
         else
           warn "Container: ${name}" "no HEALTHCHECK defined — ${image}"
           info "Consider adding HEALTHCHECK to the image or compose service"
@@ -1131,7 +1131,7 @@ check_container_health() {
     local error_lines
     error_lines=$($rt logs --tail 50 "$cid" 2>&1 \
       | grep -iE "$fatal_filter" \
-      | grep -vE "certificate counts not found|error reading current month certificate|error reading previous month certificate|lease renewal failed|failed to renew|Error making API request" \
+      | grep -vE "certificate counts not found|error reading current month certificate|error reading previous month certificate|lease renewal failed|failed to renew|Error making API request|terminating connection due to administrator command" \
       | tail -3) || error_lines=""
     if [[ -n "$error_lines" ]]; then
       warn "Log errors in ${name}" "recent ${fatal_filter} entries found"

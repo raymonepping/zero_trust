@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/verify_ldap.sh
+  ./scripts/verify_ldap.sh [--runtime docker|podman]
 
 Description:
   Sanity checks to confirm the local LDAP setup is ready and that
@@ -34,20 +34,43 @@ LDAP_PORT="${LDAP_PORT:-1389}"
 LDAP_ADMIN_DN="${LDAP_ADMIN_DN:-cn=admin,dc=my,dc=org}"
 LDAP_ADMIN_PASSWORD="${LDAP_ADMIN_PASSWORD:-admin}"
 LDAP_BASE_DN="${LDAP_BASE_DN:-dc=my,dc=org}"
+LDAP_USERS_OU="${LDAP_USERS_OU:-people}"
 LDIF_FILE="${LDIF_FILE:-ldap/bootstrap.ldif}"
 OPENLDAP_CONTAINER="${OPENLDAP_CONTAINER:-zero_trust_openldap}"
+runtime="${CONTAINER_RUNTIME:-docker}"
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --runtime)
+      runtime="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      error "Unknown argument: $1"
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+case "${runtime}" in
+  docker|podman) ;;
+  *)
+    error "Unsupported runtime '${runtime}'. Use docker or podman."
+    exit 1
+    ;;
+esac
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 ldif_path="${repo_root}/${LDIF_FILE}"
 
 # ldapadd is only needed by setup_ldap.sh, not for verification
-for cmd in docker ldapsearch; do
+for cmd in "${runtime}" ldapsearch; do
   command -v "${cmd}" >/dev/null 2>&1 || {
     error "Required command not found: ${cmd}"
     exit 1
@@ -65,7 +88,7 @@ printf '%s\n' "${ldif_path}"
 
 printf '\n'
 info "OpenLDAP container status"
-docker inspect "${OPENLDAP_CONTAINER}" --format '{{.Name}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}'
+"${runtime}" inspect "${OPENLDAP_CONTAINER}" --format '{{.Name}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}'
 
 printf '\n'
 info "LDAP host bind test"
@@ -88,28 +111,28 @@ ldapsearch -x \
   ou
 
 printf '\n'
-info "LDAP user check (ou=users)"
+info "LDAP user check (ou=${LDAP_USERS_OU})"
 user_count=$(ldapsearch -x \
   -H "ldap://${LDAP_HOST}:${LDAP_PORT}" \
   -D "${LDAP_ADMIN_DN}" \
   -w "${LDAP_ADMIN_PASSWORD}" \
-  -b "ou=users,${LDAP_BASE_DN}" \
+  -b "ou=${LDAP_USERS_OU},${LDAP_BASE_DN}" \
   '(objectClass=inetOrgPerson)' \
   uid 2>/dev/null \
   | grep -c '^uid:' || true)
 
 if [[ "${user_count}" -gt 0 ]]; then
-  ok "Found ${user_count} user(s) in ou=users"
+  ok "Found ${user_count} user(s) in ou=${LDAP_USERS_OU}"
   ldapsearch -x \
     -H "ldap://${LDAP_HOST}:${LDAP_PORT}" \
     -D "${LDAP_ADMIN_DN}" \
     -w "${LDAP_ADMIN_PASSWORD}" \
-    -b "ou=users,${LDAP_BASE_DN}" \
+    -b "ou=${LDAP_USERS_OU},${LDAP_BASE_DN}" \
     '(objectClass=inetOrgPerson)' \
     uid \
     | grep '^uid:'
 else
-  warn "No users found in ou=users — setup_ldap.sh may not have run"
+  warn "No users found in ou=${LDAP_USERS_OU} — setup_ldap.sh may not have run"
 fi
 
 printf '\n'
@@ -139,7 +162,7 @@ fi
 
 printf '\n'
 info "OpenLDAP container port mapping"
-docker port "${OPENLDAP_CONTAINER}" || warn "Could not read docker port mapping for ${OPENLDAP_CONTAINER}"
+"${runtime}" port "${OPENLDAP_CONTAINER}" || warn "Could not read port mapping for ${OPENLDAP_CONTAINER}"
 
 printf '\n'
 info "Summary"

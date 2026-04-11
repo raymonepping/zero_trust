@@ -6,6 +6,7 @@ KEYCLOAK_URL="${KC_URL:-http://localhost:8080}"
 ADMIN_USER="${KC_ADMIN_USER:-admin}"
 ADMIN_PASS="${KC_ADMIN_PASS:-admin}"
 KEYCLOAK_CONTAINER="${KC_CONTAINER:-zero_trust_keycloak}"
+runtime="${CONTAINER_RUNTIME:-docker}"
 TARGET_REALM="zero-trust"
 PROVIDER_NAME="openldap"
 FRONTEND_CLIENT_ID="zero-trust-app"
@@ -23,7 +24,8 @@ OPTIONS:
   -u, --url URL           Keycloak base URL
   -U, --admin-user USER   Admin username
   -P, --admin-pass PASS   Admin password
-  -c, --container NAME    Docker container
+  -c, --container NAME    Container name
+  -r, --runtime RUNTIME   Container runtime: docker or podman (default: docker)
   -h, --help              Show this help
 
 EOF
@@ -39,7 +41,7 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
 }
 
-kcadm() { docker exec "${KEYCLOAK_CONTAINER}" /opt/keycloak/bin/kcadm.sh "$@"; }
+kcadm() { "${runtime}" exec "${KEYCLOAK_CONTAINER}" /opt/keycloak/bin/kcadm.sh "$@"; }
 
 ensure_client() {
   local client_id="$1"
@@ -163,16 +165,22 @@ while [[ $# -gt 0 ]]; do
     -U|--admin-user)   ADMIN_USER="$2";   shift 2 ;;
     -P|--admin-pass)   ADMIN_PASS="$2";   shift 2 ;;
     -c|--container)    KEYCLOAK_CONTAINER="$2"; shift 2 ;;
+    -r|--runtime)      runtime="$2";            shift 2 ;;
     -h|--help)         usage ;;
     *) echo "Unknown option: $1" >&2; usage ;;
   esac
 done
 
 # ─── Prerequisites ────────────────────────────────────────────────────────────
-require_cmd docker
+case "${runtime}" in
+  docker|podman) ;;
+  *) fail "Unsupported runtime '${runtime}'. Use docker or podman." ;;
+esac
+
+require_cmd "${runtime}"
 require_cmd jq
 
-docker inspect "${KEYCLOAK_CONTAINER}" >/dev/null 2>&1 \
+"${runtime}" inspect "${KEYCLOAK_CONTAINER}" >/dev/null 2>&1 \
   || fail "Container '${KEYCLOAK_CONTAINER}' is not running. Start the stack first."
 
 # Wait for Keycloak to respond

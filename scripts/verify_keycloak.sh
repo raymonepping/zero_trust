@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/verify_keycloak.sh
+  ./scripts/verify_keycloak.sh [--runtime docker|podman]
 
 Description:
   Sanity checks to confirm Keycloak is running, reachable, and that
@@ -29,12 +29,14 @@ ok() {
   printf 'OK  %s\n' "$*"
 }
 
+runtime="${CONTAINER_RUNTIME:-docker}"
+
 container_status() {
   local container_name="$1"
   local status health
 
-  status="$(docker inspect "${container_name}" --format '{{.State.Status}}')"
-  health="$(docker inspect "${container_name}" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}')"
+  status="$("${runtime}" inspect "${container_name}" --format '{{.State.Status}}')"
+  health="$("${runtime}" inspect "${container_name}" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}')"
 
   if [[ -n "${health}" ]]; then
     printf '%s %s\n' "${status}" "${health}"
@@ -49,12 +51,33 @@ ADMIN_PASS="${KC_ADMIN_PASS:-admin}"
 KEYCLOAK_CONTAINER="${KC_CONTAINER:-zero_trust_keycloak}"
 OPENLDAP_CONTAINER="${OPENLDAP_CONTAINER:-zero_trust_openldap}"
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --runtime)
+      runtime="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      error "Unknown argument: $1"
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
-for cmd in docker jq curl; do
+case "${runtime}" in
+  docker|podman) ;;
+  *)
+    error "Unsupported runtime '${runtime}'. Use docker or podman."
+    exit 1
+    ;;
+esac
+
+for cmd in "${runtime}" jq curl; do
   command -v "${cmd}" >/dev/null 2>&1 || {
     error "Required command not found: ${cmd}"
     exit 1
@@ -81,12 +104,12 @@ curl -sSf "${KEYCLOAK_URL}/realms/master/.well-known/openid-configuration" \
 
 printf '\n'
 info "kcadm availability inside container"
-docker exec "${KEYCLOAK_CONTAINER}" test -x /opt/keycloak/bin/kcadm.sh
+"${runtime}" exec "${KEYCLOAK_CONTAINER}" test -x /opt/keycloak/bin/kcadm.sh
 ok "/opt/keycloak/bin/kcadm.sh"
 
 printf '\n'
 info "Keycloak admin login sanity"
-docker exec "${KEYCLOAK_CONTAINER}" /opt/keycloak/bin/kcadm.sh config credentials \
+"${runtime}" exec "${KEYCLOAK_CONTAINER}" /opt/keycloak/bin/kcadm.sh config credentials \
   --server "http://localhost:8080" \
   --realm master \
   --user "${ADMIN_USER}" \

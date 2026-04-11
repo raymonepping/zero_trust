@@ -67,6 +67,10 @@ fi
 
 compose_cmd=("${runtime}" "compose")
 
+clean_compose_output() {
+  sed -E $'s/\x1B\\[[0-9;]*[[:alpha:]]//g' | grep -v 'Executing external compose provider'
+}
+
 if [[ "${runtime}" == "podman" ]] && ! podman compose version >/dev/null 2>&1; then
   error "podman compose is not available."
   exit 1
@@ -77,9 +81,10 @@ fi
 COMPOSE_PROJECT="zero_trust"
 
 info "Compose volumes"
-"${compose_cmd[@]}" -f "${repo_root}/docker-compose.yml" config --volumes
+compose_volumes="$("${compose_cmd[@]}" -f "${repo_root}/docker-compose.yml" config --volumes 2>&1 | clean_compose_output)"
+printf '%s\n' "${compose_volumes}"
 
-db_volume="$("${compose_cmd[@]}" -f "${repo_root}/docker-compose.yml" config --volumes | awk '$0 == "db_data" { print; found=1 } END { if (!found) exit 1 }')"
+db_volume="$(printf '%s\n' "${compose_volumes}" | awk '$0 == "db_data" { print; found=1 } END { if (!found) exit 1 }')"
 
 if [[ -z "${db_volume}" ]]; then
   error "Compose volume 'db_data' not found."
@@ -100,19 +105,11 @@ info "Matching volume"
 
 printf '\n'
 info "Inspecting volume ${full_volume_name}"
-if [[ "${runtime}" == "docker" ]]; then
-  docker volume inspect "${full_volume_name}" | jq '.[0] | {Name, Driver, Mountpoint, CreatedAt}'
-else
-  podman volume inspect "${full_volume_name}"
-fi
+"${runtime}" volume inspect "${full_volume_name}" | jq '.[0] | {Name, Driver, Mountpoint, CreatedAt}'
 
 printf '\n'
 info "Inspecting container mounts for ${container_name}"
-if [[ "${runtime}" == "docker" ]]; then
-  docker inspect "${container_name}" --format '{{json .Mounts}}' | jq '.[] | {Type, Name, Destination}'
-else
-  podman inspect "${container_name}"
-fi
+"${runtime}" inspect "${container_name}" --format '{{json .Mounts}}' | jq '.[] | {Type, Name, Destination}'
 
 if ! command -v psql >/dev/null 2>&1; then
   printf '\n'

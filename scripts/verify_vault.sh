@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/verify_vault.sh
+  ./scripts/verify_vault.sh [--runtime docker|podman]
 
 Description:
   Basic sanity checks to confirm the local Vault setup is running, reachable,
@@ -30,12 +30,14 @@ ok() {
   printf 'OK  %s\n' "$*"
 }
 
+runtime="${CONTAINER_RUNTIME:-docker}"
+
 container_status() {
   local container_name="$1"
   local status health
 
-  status="$(docker inspect "${container_name}" --format '{{.State.Status}}')"
-  health="$(docker inspect "${container_name}" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}')"
+  status="$("${runtime}" inspect "${container_name}" --format '{{.State.Status}}')"
+  health="$("${runtime}" inspect "${container_name}" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}')"
 
   if [[ -n "${health}" ]]; then
     printf '%s %s\n' "${status}" "${health}"
@@ -48,12 +50,33 @@ VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}"
 VAULT_CONTAINER="${VAULT_CONTAINER:-zero_trust_vault}"
 VAULT_AGENT_CONTAINER="${VAULT_AGENT_CONTAINER:-zero_trust_vault_agent}"
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --runtime)
+      runtime="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      error "Unknown argument: $1"
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
-for cmd in docker curl jq; do
+case "${runtime}" in
+  docker|podman) ;;
+  *)
+    error "Unsupported runtime '${runtime}'. Use docker or podman."
+    exit 1
+    ;;
+esac
+
+for cmd in "${runtime}" curl jq; do
   command -v "${cmd}" >/dev/null 2>&1 || {
     error "Required command not found: ${cmd}"
     exit 1
@@ -134,7 +157,7 @@ done
 
 printf '\n'
 info "Vault Agent rendered credentials"
-docker exec "${VAULT_AGENT_CONTAINER}" sh -c \
+"${runtime}" exec "${VAULT_AGENT_CONTAINER}" sh -c \
   'test -f /vault/secrets/db-creds.json && echo "db-creds.json present" || echo "db-creds.json missing"'
 
 printf '\n'
