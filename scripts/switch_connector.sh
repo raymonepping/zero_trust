@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-VERSION="2.4.0"
+VERSION="2.5.0"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -10,6 +10,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TARGET_FILE="${REPO_ROOT}/backend/connector.js"
 BASE_URL="https://raw.githubusercontent.com/raymonepping/zero_trust/refs/heads/main/data"
 CONTAINER_NAME="zero_trust_backend"
+RUNTIME="auto"
+EFFECTIVE_RUNTIME=""
 
 # ---------------------------------------------------------------------------
 # Colours
@@ -57,6 +59,55 @@ is_valid_type() {
   return 1
 }
 
+detect_runtime() {
+  if [[ -n "${CONTAINER_RUNTIME:-}" ]]; then
+    case "${CONTAINER_RUNTIME}" in
+      docker|podman)
+        EFFECTIVE_RUNTIME="${CONTAINER_RUNTIME}"
+        return 0
+        ;;
+    esac
+  fi
+
+  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    EFFECTIVE_RUNTIME="podman"
+    return 0
+  fi
+
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    EFFECTIVE_RUNTIME="docker"
+    return 0
+  fi
+
+  if command -v podman >/dev/null 2>&1; then
+    EFFECTIVE_RUNTIME="podman"
+    return 0
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    EFFECTIVE_RUNTIME="docker"
+    return 0
+  fi
+
+  err "Unable to detect a supported container runtime. Install/start Docker or Podman, or pass --runtime."
+  exit 1
+}
+
+resolve_runtime() {
+  case "${RUNTIME}" in
+    auto)
+      detect_runtime
+      ;;
+    docker|podman)
+      EFFECTIVE_RUNTIME="${RUNTIME}"
+      ;;
+    *)
+      err "Unsupported runtime '${RUNTIME}'. Use docker, podman, or auto."
+      exit 1
+      ;;
+  esac
+}
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -81,6 +132,9 @@ ${C_BOLD}COMMANDS${C_RESET}
   ${C_YELLOW}--help${C_RESET}                    Show this help message
   ${C_YELLOW}--version${C_RESET}                 Show script version
 
+${C_BOLD}OPTIONS${C_RESET}
+  ${C_YELLOW}--runtime${C_RESET} ${C_CYAN}<docker|podman|auto>${C_RESET}  Runtime used for backend restart ${C_DIM}(default: auto)${C_RESET}
+
 ${C_BOLD}CONNECTOR TYPES${C_RESET}"
 
   for t in "${VALID_TYPES[@]}"; do
@@ -91,6 +145,9 @@ ${C_BOLD}CONNECTOR TYPES${C_RESET}"
 ${C_BOLD}EXAMPLES${C_RESET}
   ${C_DIM}# Start from scratch — hardcoded credentials${C_RESET}
   ${C_YELLOW}./switch_connector.sh --replace-with wired${C_RESET}
+
+  ${C_DIM}# Restart backend explicitly with Podman${C_RESET}
+  ${C_YELLOW}./switch_connector.sh --runtime podman --replace-with wired${C_RESET}
 
   ${C_DIM}# Move to environment variables${C_RESET}
   ${C_YELLOW}./switch_connector.sh --replace-with env${C_RESET}
@@ -117,7 +174,7 @@ ${C_BOLD}EXAMPLES${C_RESET}
   ${C_YELLOW}./switch_connector.sh --replace-with jwt-ciba${C_RESET}
 
 ${C_BOLD}PREREQUISITES${C_RESET}
-  ${C_DIM}•${C_RESET} Docker / Podman with Compose running
+  ${C_DIM}•${C_RESET} Docker or Podman with Compose running
   ${C_DIM}•${C_RESET} Container named ${C_CYAN}${CONTAINER_NAME}${C_RESET} must be up
   ${C_DIM}•${C_RESET} curl available on PATH
   ${C_DIM}•${C_RESET} For vault/dynamic: Vault must be unsealed and configured
@@ -225,10 +282,16 @@ replace_connector() {
   dim "  Checksum: $(md5sum "${TARGET_FILE}" | awk '{print $1}')"
 
   echo
-  info "Restarting backend container ${C_CYAN}${CONTAINER_NAME}${C_RESET}..."
+  resolve_runtime
+  info "Restarting backend container ${C_CYAN}${CONTAINER_NAME}${C_RESET} with ${C_CYAN}${EFFECTIVE_RUNTIME}${C_RESET} compose..."
 
-  if ! (cd "${REPO_ROOT}" && docker compose restart backend) 2>/dev/null; then
-    err "docker compose restart failed — is the stack running?"
+  if ! command -v "${EFFECTIVE_RUNTIME}" >/dev/null 2>&1; then
+    err "${EFFECTIVE_RUNTIME} CLI is not installed or not on PATH."
+    exit 1
+  fi
+
+  if ! (cd "${REPO_ROOT}" && "${EFFECTIVE_RUNTIME}" compose restart backend) 2>/dev/null; then
+    err "${EFFECTIVE_RUNTIME} compose restart failed — is the stack running?"
     exit 1
   fi
 
@@ -245,18 +308,59 @@ if [[ $# -eq 0 ]]; then
   exit 1
 fi
 
-case "$1" in
-  --replace-with)
-    [[ -z "${2:-}" ]] && { err "Missing connector type. Run --list to see options."; exit 1; }
-    replace_connector "$2"
-    ;;
-  --list)    list_versions ;;
-  --current) show_current ;;
-  --help)    show_help ;;
-  --version) show_version ;;
+COMMAND=""
+COMMAND_ARG=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --runtime)
+      RUNTIME="${2:-}"
+      [[ -z "${RUNTIME}" ]] && { err "Missing runtime value. Use docker, podman, or auto."; exit 1; }
+      shift 2
+      ;;
+    --replace-with)
+      [[ -n "${COMMAND}" ]] && { err "Only one command can be used at a time."; exit 1; }
+      COMMAND="replace"
+      COMMAND_ARG="${2:-}"
+      [[ -z "${COMMAND_ARG}" ]] && { err "Missing connector type. Run --list to see options."; exit 1; }
+      shift 2
+      ;;
+    --list)
+      [[ -n "${COMMAND}" ]] && { err "Only one command can be used at a time."; exit 1; }
+      COMMAND="list"
+      shift
+      ;;
+    --current)
+      [[ -n "${COMMAND}" ]] && { err "Only one command can be used at a time."; exit 1; }
+      COMMAND="current"
+      shift
+      ;;
+    --help)
+      [[ -n "${COMMAND}" ]] && { err "Only one command can be used at a time."; exit 1; }
+      COMMAND="help"
+      shift
+      ;;
+    --version)
+      [[ -n "${COMMAND}" ]] && { err "Only one command can be used at a time."; exit 1; }
+      COMMAND="version"
+      shift
+      ;;
+    *)
+      err "Unknown option: $1"
+      echo -e "Run ${C_YELLOW}./switch_connector.sh --help${C_RESET} for usage."
+      exit 1
+      ;;
+  esac
+done
+
+case "${COMMAND}" in
+  replace) replace_connector "${COMMAND_ARG}" ;;
+  list)    list_versions ;;
+  current) show_current ;;
+  help)    show_help ;;
+  version) show_version ;;
   *)
-    err "Unknown option: $1"
-    echo -e "Run ${C_YELLOW}./switch_connector.sh --help${C_RESET} for usage."
+    err "No command provided. Run --help for usage."
     exit 1
     ;;
 esac

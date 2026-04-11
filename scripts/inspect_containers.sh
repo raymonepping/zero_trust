@@ -10,11 +10,87 @@ ORANGE="\033[38;5;208m"
 RED="\033[31m"
 RESET="\033[0m"
 DEBUG_INSPECT="${DEBUG_INSPECT_CONTAINERS:-0}"
+RUNTIME="auto"
+EFFECTIVE_RUNTIME=""
+
+detect_runtime() {
+  if [[ -n "${CONTAINER_RUNTIME:-}" ]]; then
+    case "${CONTAINER_RUNTIME}" in
+      docker|podman)
+        EFFECTIVE_RUNTIME="${CONTAINER_RUNTIME}"
+        return 0
+        ;;
+    esac
+  fi
+
+  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    EFFECTIVE_RUNTIME="podman"
+    return 0
+  fi
+
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    EFFECTIVE_RUNTIME="docker"
+    return 0
+  fi
+
+  if command -v podman >/dev/null 2>&1; then
+    EFFECTIVE_RUNTIME="podman"
+    return 0
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    EFFECTIVE_RUNTIME="docker"
+    return 0
+  fi
+
+  echo "ERROR: unable to detect a supported container runtime" >&2
+  exit 1
+}
+
+resolve_runtime() {
+  case "${RUNTIME}" in
+    auto)
+      detect_runtime
+      ;;
+    docker|podman)
+      EFFECTIVE_RUNTIME="${RUNTIME}"
+      ;;
+    *)
+      echo "ERROR: unsupported runtime '${RUNTIME}'. Use docker, podman, or auto." >&2
+      exit 1
+      ;;
+  esac
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --runtime)
+      RUNTIME="${2:-}"
+      [[ -z "${RUNTIME}" ]] && { echo "ERROR: missing runtime value" >&2; exit 1; }
+      shift 2
+      ;;
+    --help)
+      echo "Usage: $(basename "$0") [--runtime docker|podman|auto]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+resolve_runtime
+
+if ! command -v "${EFFECTIVE_RUNTIME}" >/dev/null 2>&1; then
+  echo "ERROR: ${EFFECTIVE_RUNTIME} CLI is not installed or not on PATH" >&2
+  exit 1
+fi
 
 declare -A CONTAINER_NAMES=()
 while IFS='|' read -r id resolved_name; do
   CONTAINER_NAMES["$id"]="$resolved_name"
-done < <(docker ps --format "{{.ID}}|{{.Names}}" | tr -d '\r')
+done < <("${EFFECTIVE_RUNTIME}" ps --format "{{.ID}}|{{.Names}}" | tr -d '\r')
 
 bar() {
   local pct="${1%.*}"
@@ -43,7 +119,7 @@ W_NET=20
 W_BLOCK=20
 
 echo ""
-echo -e "${BOLD}${CYAN}=== Container Resource Usage ===${RESET}"
+echo -e "${BOLD}${CYAN}=== Container Resource Usage (${EFFECTIVE_RUNTIME}) ===${RESET}"
 
 # Header — bar is always W_CPU_BAR visual chars, so header uses plain spaces for that column
 total_width=$(( W_NAME + ${#SEP} + W_CPU_BAR + 1 + W_CPU_VAL + ${#SEP} + W_MEM + ${#SEP} + W_NET + ${#SEP} + W_BLOCK ))
@@ -51,10 +127,10 @@ printf "${BOLD}%-${W_NAME}s${SEP}%-$(( W_CPU_BAR + 1 + W_CPU_VAL ))s${SEP}%${W_M
   "NAME" "CPU" "MEM%" "NET-I/O" "BLOCK-I/O"
 printf '%.0s─' $(seq 1 $total_width); echo
 
-docker stats --no-stream --format \
+"${EFFECTIVE_RUNTIME}" stats --no-stream --format \
   "{{.ID}}|{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}" \
 | tr -d '\r' \
-| while IFS='|' read -r id name cpu mem mempct netio blockio; do
+| while IFS='|' read -r id name cpu _mem mempct netio blockio; do
     display_name="$name"
     if [[ -n "${CONTAINER_NAMES[$id]:-}" ]]; then
       display_name="${CONTAINER_NAMES[$id]}"
@@ -82,7 +158,7 @@ docker stats --no-stream --format \
   done
 
 echo ""
-echo -e "${BOLD}${CYAN}=== Disk Usage (zero_trust project) ===${RESET}"
+echo -e "${BOLD}${CYAN}=== Disk Usage (zero_trust project / ${EFFECTIVE_RUNTIME}) ===${RESET}"
 
 COMPOSE_PROJECT="zero_trust"
 
@@ -91,13 +167,13 @@ echo ""
 echo -e "${BOLD}Images${RESET}"
 printf '%.0s─' $(seq 1 72); echo
 
-project_images=$(docker ps -a \
+project_images=$("${EFFECTIVE_RUNTIME}" ps -a \
   --filter "name=${COMPOSE_PROJECT}_" \
   --format "{{.Image}}" 2>/dev/null | sort -u)
 
 if [[ -z "$project_images" ]]; then
   # Stack not running — read images from compose config
-  project_images=$(cd "$(dirname "$0")/.." && docker compose config 2>/dev/null \
+  project_images=$(cd "$(dirname "$0")/.." && "${EFFECTIVE_RUNTIME}" compose config 2>/dev/null \
     | grep -E "^\s+image:" | awk '{print $2}' | sort -u)
 fi
 
@@ -107,7 +183,7 @@ printf '%.0s─' $(seq 1 72); echo
 
 while IFS= read -r img; do
   [[ -z "$img" ]] && continue
-  info=$(docker image inspect "$img" \
+  info=$("${EFFECTIVE_RUNTIME}" image inspect "$img" \
     --format '{{.Size}}|{{.RepoTags}}' 2>/dev/null || echo "")
   if [[ -z "$info" ]]; then
     printf "%-50s %10s %s\n" "$img" "n/a" "(not pulled)"
@@ -115,7 +191,7 @@ while IFS= read -r img; do
   fi
   raw_bytes=$(echo "$info" | cut -d'|' -f1)
   total_image_bytes=$(( total_image_bytes + raw_bytes ))
-  size_human=$(docker image inspect "$img" \
+  size_human=$("${EFFECTIVE_RUNTIME}" image inspect "$img" \
     --format '{{.Size}}' 2>/dev/null \
     | awk '{
         if ($1 >= 1073741824) printf "%.1fGB", $1/1073741824
@@ -140,20 +216,29 @@ printf '%.0s─' $(seq 1 72); echo
 printf "${BOLD}%-35s %-12s %10s %s${RESET}\n" "NAME" "STATUS" "SIZE" "IMAGE"
 printf '%.0s─' $(seq 1 72); echo
 
-total_container_bytes=0
-docker ps -a --format "{{.Names}}|{{.Status}}|{{.Size}}|{{.Image}}" 2>/dev/null \
+ps_args=(-a)
+if [[ "${EFFECTIVE_RUNTIME}" == "podman" ]]; then
+  ps_args+=(--size)
+fi
+
+container_rows=$("${EFFECTIVE_RUNTIME}" ps "${ps_args[@]}" --format "{{.Names}}|{{.Status}}|{{.Size}}|{{.Image}}" 2>/dev/null \
   | grep "^${COMPOSE_PROJECT}_" \
-  | sort \
-  | while IFS='|' read -r name status size image; do
-      short=$(echo "$name" | sed "s/^${COMPOSE_PROJECT}_//")
-      # extract the writable-layer size (before the virtual marker)
-      layer=$(echo "$size" | grep -oE '^[0-9.]+(B|kB|MB|GB)')
-      printf "%-35s %-12s %10s %s\n" \
-        "$short" \
-        "${status%% (*}" \
-        "${layer:-$size}" \
-        "$image"
-    done
+  | sort || true)
+
+if [[ -z "${container_rows}" ]]; then
+  printf "%-35s %-12s %10s %s\n" "(none)" "—" "—" "(no matching containers)"
+else
+  while IFS='|' read -r name status size image; do
+    short="${name#"${COMPOSE_PROJECT}"_}"
+    # extract the writable-layer size (before the virtual marker)
+    layer=$(echo "$size" | grep -oE '^[0-9.]+(B|kB|MB|GB)')
+    printf "%-35s %-12s %10s %s\n" \
+      "$short" \
+      "${status%% (*}" \
+      "${layer:-$size}" \
+      "$image"
+  done <<< "${container_rows}"
+fi
 
 # ── Volumes for this project ─────────────────────────────────────────────────
 echo ""
@@ -167,15 +252,15 @@ for vol_suffix in db_data keycloak_data ollama_data \
                   openldap-config openldap-data \
                   vault-agent-secrets vault_data; do
   vol_name="${COMPOSE_PROJECT}_${vol_suffix}"
-  exists=$(docker volume ls --format "{{.Name}}" 2>/dev/null \
+  exists=$("${EFFECTIVE_RUNTIME}" volume ls --format "{{.Name}}" 2>/dev/null \
     | grep -x "$vol_name" || true)
   if [[ -z "$exists" ]]; then
     printf "%-40s %10s %s\n" "$vol_suffix" "—" "(not created)"
     continue
   fi
-  # Run du inside a throwaway container — Docker volume mountpoints on macOS
-  # live inside the Docker Desktop VM and are not accessible from the host.
-  size_raw=$(docker run --rm \
+  # Run du inside a throwaway container — runtime-managed volume mountpoints on macOS
+  # live inside the VM and are not accessible from the host.
+  size_raw=$("${EFFECTIVE_RUNTIME}" run --rm \
     -v "${vol_name}:/data:ro" \
     --entrypoint sh \
     alpine -c 'du -sb /data 2>/dev/null | cut -f1' 2>/dev/null || echo "0")

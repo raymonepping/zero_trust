@@ -425,8 +425,11 @@ check_daemon() {
           fail "No Podman machine found"
           if [[ "$FIX" == true ]]; then
             echo -e "  ${YELLOW}  Initializing and starting default Podman machine...${RESET}"
-            podman machine init 2>/dev/null && podman machine start 2>/dev/null && fixed "Podman machine initialized and started" || \
+            if podman machine init 2>/dev/null && podman machine start 2>/dev/null; then
+              fixed "Podman machine initialized and started"
+            else
               fail "Failed to init/start Podman machine"
+            fi
           else
             suggest "podman machine init && podman machine start"
           fi
@@ -436,9 +439,11 @@ check_daemon() {
           fail "Podman machine '${machine_name}' exists but daemon not reachable" "Last state: ${state}"
           if [[ "$FIX" == true ]]; then
             echo -e "  ${YELLOW}  Attempting to start Podman machine '${machine_name}'...${RESET}"
-            podman machine start "$machine_name" 2>/dev/null && wait_for_daemon podman && \
-              fixed "Podman machine '${machine_name}' started" || \
+            if podman machine start "$machine_name" 2>/dev/null && wait_for_daemon podman; then
+              fixed "Podman machine '${machine_name}' started"
+            else
               fail "Failed to start Podman machine '${machine_name}'"
+            fi
           else
             suggest "podman machine start ${machine_name}"
           fi
@@ -470,7 +475,8 @@ check_daemon() {
   fi
 
   if [[ "$rt" == "podman" ]]; then
-    local uid_socket="/run/user/$(id -u)/podman/podman.sock"
+    local uid_socket
+    uid_socket="/run/user/$(id -u)/podman/podman.sock"
     local machine_socket_qemu="$HOME/.local/share/containers/podman/machine/qemu/podman.sock"
     local machine_socket_applehv="$HOME/.local/share/containers/podman/machine/applehv/podman.sock"
     # Podman Desktop (macOS) uses a user-level socket derived from the machine
@@ -528,7 +534,11 @@ check_machine_state() {
     else
       warn "Docker Desktop process not detected"
       if [[ "$FIX" == true ]]; then
-        open -a Docker 2>/dev/null && fixed "Docker Desktop launched" || warn "Could not launch Docker Desktop"
+        if open -a Docker 2>/dev/null; then
+          fixed "Docker Desktop launched"
+        else
+          warn "Could not launch Docker Desktop"
+        fi
       else
         suggest "open -a Docker"
       fi
@@ -557,9 +567,11 @@ check_machine_state() {
       fail "No Podman machines configured"
       if [[ "$FIX" == true ]]; then
         echo -e "  ${YELLOW}  Initializing default Podman machine...${RESET}"
-        podman machine init 2>/dev/null && podman machine start 2>/dev/null && \
-          fixed "Podman machine initialized and started" || \
+        if podman machine init 2>/dev/null && podman machine start 2>/dev/null; then
+          fixed "Podman machine initialized and started"
+        else
           fail "Failed to initialize Podman machine"
+        fi
       else
         suggest "podman machine init"
         suggest "podman machine start"
@@ -575,9 +587,11 @@ check_machine_state() {
       else
         fail "Podman machine '${mname}' is not running"
         if [[ "$FIX" == true ]]; then
-          podman machine start "$mname" 2>/dev/null && \
-            fixed "Started Podman machine '${mname}'" || \
+          if podman machine start "$mname" 2>/dev/null; then
+            fixed "Started Podman machine '${mname}'"
+          else
             fail "Failed to start Podman machine '${mname}'"
+          fi
         else
           suggest "podman machine start ${mname}"
         fi
@@ -777,9 +791,16 @@ check_storage() {
   pass "Total volumes" "$vol_count"
   if [[ "$dangling_count" -gt 0 ]]; then
     warn "Dangling volumes" "${dangling_count} unused volume(s) consuming disk"
+    if [[ "$rt" == "docker" ]] && command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+      info "Docker and Podman keep separate volume stores. Same-named Podman volumes are not counted here."
+      info "If this workshop is running on Podman, these Docker dangling volumes are likely stale Docker-side copies."
+    fi
     if [[ "$FIX" == true ]]; then
-      $rt volume prune -f &>/dev/null 2>&1 && fixed "Pruned ${dangling_count} dangling volume(s)" || \
+      if $rt volume prune -f &>/dev/null 2>&1; then
+        fixed "Pruned ${dangling_count} dangling volume(s)"
+      else
         warn "Could not prune dangling volumes"
+      fi
     else
       suggest "${rt} volume prune"
     fi
@@ -825,8 +846,11 @@ check_networking() {
   else
     warn "Default ${rt} network '${default_net}' not found"
     if [[ "$FIX" == true ]]; then
-      $rt network create "$default_net" &>/dev/null 2>&1 && fixed "Created ${default_net} network" || \
+      if $rt network create "$default_net" &>/dev/null 2>&1; then
+        fixed "Created ${default_net} network"
+      else
         warn "Could not create ${default_net} network"
+      fi
     else
       suggest "${rt} network create ${default_net}"
     fi
@@ -1006,7 +1030,7 @@ check_services() {
         200|204|301|302)
           pass "${svc^} HTTP health check" "HTTP ${http_code} at ${health_url}"
           ;;
-        429|503|429)
+        429|503)
           warn "${svc^} health check returned ${http_code}" "may be initializing"
           ;;
         000)
@@ -1283,7 +1307,11 @@ check_image_provenance() {
   if [[ "$dangling" -gt 0 ]]; then
     warn "Dangling images" "${dangling} untagged image(s) consuming disk"
     if [[ "$FIX" == true ]]; then
-      $rt image prune -f &>/dev/null 2>&1 && fixed "Pruned ${dangling} dangling image(s)" ||         warn "Could not prune dangling images"
+      if $rt image prune -f &>/dev/null 2>&1; then
+        fixed "Pruned ${dangling} dangling image(s)"
+      else
+        warn "Could not prune dangling images"
+      fi
     else
       suggest "${rt} image prune"
     fi
@@ -1296,7 +1324,7 @@ _check_images_by_ids() {
   local ids="$1"
   while IFS= read -r iid; do
     [[ -z "$iid" ]] && continue
-    local repo tag
+    local repo
     repo=$(docker image inspect "$iid" --format '{{index .RepoTags 0}}' 2>/dev/null) || repo="<untagged>"
     if [[ "$repo" == "<untagged>" || -z "$repo" ]]; then
       warn "Untagged image" "$iid"
@@ -1466,7 +1494,7 @@ _health_grade() {
   elif [[ $FAIL -ge 1 ]]; then
     echo "D|Critical|${RED}|${RED}|🔴|${score}"
   elif [[ $WARN -ge 3 ]]; then
-    echo "C|Degraded|\033[0;33m|\033[0;33m|🟠|${score}"
+    echo "C|Degraded|${YELLOW}|${YELLOW}|🟠|${score}"
   elif [[ $WARN -ge 1 ]]; then
     echo "B|Good|${YELLOW}|${YELLOW}|🟡|${score}"
   else

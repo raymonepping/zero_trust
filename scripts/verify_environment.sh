@@ -610,7 +610,12 @@ generate_report_summary() {
   fi
 
   local health_color="$GREEN"
-  if [[ $health_score -lt 100 && $health_score -ge 70 ]]; then
+  local health_display="${health_score}%"
+  local executed_checks=$((PASSED + WARNINGS + FAILED))
+  if [[ $executed_checks -eq 0 ]]; then
+    health_color="$DIM"
+    health_display="N/A"
+  elif [[ $health_score -lt 100 && $health_score -ge 70 ]]; then
     health_color="$YELLOW"
   elif [[ $health_score -lt 70 ]]; then
     health_color="$RED"
@@ -619,7 +624,7 @@ generate_report_summary() {
   printf '%bEnvironment Verification Report%b\n' "$BOLD$BLUE" "$RESET"
   printf 'Runtime: %b%s%b\n' "$CYAN" "$EFFECTIVE_RUNTIME" "$RESET"
   printf 'Overall: %b%s%b\n' "$overall_color$BOLD" "$overall_status" "$RESET"
-  printf 'Health : %b%s%%%b\n' "$health_color$BOLD" "$health_score" "$RESET"
+  printf 'Health : %b%s%b\n' "$health_color$BOLD" "$health_display" "$RESET"
   printf 'Time   : %b%s%b\n' "$CYAN" "$(format_duration "$total_time")" "$RESET"
   printf '\n'
   printf '%b%-20s %-8s %-10s %-6s %s%b\n' "$BOLD$BLUE" "Service" "Status" "Duration" "Exit" "Warnings" "$RESET"
