@@ -6,12 +6,14 @@ listener "tcp" {
 }
 
 worker {
-  initial_upstreams = ["boundary-ingress-worker:9202"]
-  name              = "local-egress-worker"
-  public_addr       = "boundary-egress-worker:9202"
+  initial_upstreams                           = ["boundary-ingress-worker:9202"]
+  name                                        = "local-egress-worker"
+  public_addr                                 = "boundary-egress-worker:9202"
+  recording_storage_path                      = "/boundary/recordings"
+  recording_storage_minimum_available_capacity = "100MiB"
 
   tags {
-    type = ["egress", "private"]
+    type = ["egress", "private", "recording"]
   }
 }
 

@@ -42,3 +42,10 @@ kms "aead" {
   key       = "CgnM7F2sc9wNn/1wZvSpPSHsD8EzROxDwnt5luxfFWA="
   key_id    = "global_recovery"
 }
+
+kms "aead" {
+  purpose   = "bsr"
+  aead_type = "aes-gcm"
+  key       = "YfLw7T+3mW7mV6i0D9m6gA9QKqv1w6L8rXKq3v3P0sU="
+  key_id    = "global_bsr"
+}
