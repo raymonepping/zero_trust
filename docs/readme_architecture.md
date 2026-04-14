@@ -155,8 +155,8 @@ The end-user plane is the **application access path**. A browser interacts with 
 ╚═════════════════════════════════════════════════════════════════╪════════════╝
                                                                   │ model pulls
 ╔═════════════════════════════════════════════════════════════════╪════════════╗
-║  net-egress                                                       │          ║
-║                                                          ┌────────▼──────┐   ║
+║  net-egress                                                     │            ║
+║                                                          ┌──────▼────────┐   ║
 ║                                                          │   Internet    │   ║
 ║                                                          └───────────────┘   ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -238,12 +238,12 @@ The SSH client connects to the ingress worker at `:9202`. The ingress worker tun
 
 Both planes rely on a shared identity and credential layer:
 
-| Service          | Role                                                                                                  | Used by                                                        |
-| ---------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Vault**        | Credential authority — issues dynamic DB credentials, validates JWT auth, manages AppRole identities | Backend (all dynamic connector modes), Vault Agent             |
-| **Keycloak**     | OIDC provider — issues JWTs, maps LDAP roles to JWT claims, handles CIBA backchannel auth            | Backend (jwt-* connector modes), frontend (CIBA approval UI)   |
-| **OpenLDAP**     | Identity source — users, groups, role assignments                                                     | Keycloak (user federation), LDAP Admin (management)            |
-| **Vault Agent**  | Sidecar credential renderer — authenticates to Vault and writes `db-creds.json` to a shared volume  | Backend in `agent-dynamic` mode                                |
+| Service | Role | Used by |
+| --- | --- | --- |
+| **Vault** | Credential authority — issues dynamic DB credentials, validates JWT auth, manages AppRole identities | Backend (all dynamic connector modes), Vault Agent |
+| **Keycloak** | OIDC provider — issues JWTs, maps LDAP roles to JWT claims, handles CIBA backchannel auth | Backend (jwt-* connector modes), frontend (CIBA approval UI) |
+| **OpenLDAP** | Identity source — users, groups, role assignments | Keycloak (user federation), LDAP Admin (management) |
+| **Vault Agent** | Sidecar credential renderer — authenticates to Vault and writes `db-creds.json` to a shared volume | Backend in `agent-dynamic` mode |
 
 ### Credential lifecycle in the application plane
 
