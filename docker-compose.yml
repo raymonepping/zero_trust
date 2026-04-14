@@ -1,4 +1,11 @@
 services:
+# This docker-compose file defines the services for the Zero Trust workshop, 
+# including a backend, frontend, database, Vault, Vault Agent, 
+# OpenLDAP, phpLDAPadmin, and Keycloak. 
+# Each service is configured with appropriate environment variables, 
+# volumes, ports, health checks, and dependencies to ensure they work together seamlessly 
+# in the workshop environment.
+
   db:
     build:
       context: ./db
@@ -14,6 +21,7 @@ services:
       - db_data:/var/lib/postgresql/data
     networks:
       - net-data
+      - net-boundary-private
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
       interval: 10s
@@ -70,6 +78,8 @@ services:
       retries: 12
       start_period: 15s
 
+# The ollama service runs a local instance of the Ollama language model server, 
+# which is used in the workshop for AI-powered features.
   ollama:
     build:
       context: ./ollama
@@ -101,6 +111,8 @@ services:
       retries: 10
       start_period: 60s
 
+# The backend service runs the main application backend for the workshop, 
+# which handles API requests, authentication flows, and integration with Vault and other services.
   backend:
     # Built locally and bind-mounted on purpose so workshop participants can
     # swap backend files such as connector.js and immediately change auth flows.
@@ -130,6 +142,8 @@ services:
       retries: 5
       start_period: 15s
 
+# The frontend service runs the user interface for the workshop, 
+# which interacts with the backend and provides a user-friendly way to explore the Zero Trust concepts and features.
   frontend:
     # Built locally and bind-mounted so the running UI always matches the
     # checked-out workshop code instead of a prebuilt image revision.
@@ -157,6 +171,8 @@ services:
       retries: 5
       start_period: 15s
 
+# The openldap service provides an LDAP server for the workshop, which is used for authentication and user management 
+# in integration with GitLab and Keycloak.
   openldap:
     image: osixia/openldap:1.5.0
     container_name: zero_trust_openldap
@@ -183,6 +199,8 @@ services:
       retries: 5
       start_period: 20s
 
+# The ldap-admin service provides a web-based interface for managing the OpenLDAP server, 
+# allowing workshop participants to easily view and modify LDAP entries as needed for the exercises.
   ldap-admin:
     image: osixia/phpldapadmin:0.9.0
     container_name: zero_trust_ldap-admin
@@ -201,6 +219,9 @@ services:
       openldap:
         condition: service_healthy
 
+# The keycloak service runs an instance of Keycloak, which is used as the identity provider for the workshop, 
+# allowing participants to explore SSO, OIDC, and other identity management features in the context of Zero Trust. 
+# It is configured to use the OpenLDAP server as its user federation source.
   keycloak:
     image: quay.io/keycloak/keycloak:26.5.7
     container_name: zero_trust_keycloak
@@ -226,6 +247,109 @@ services:
     networks:
       - net-data
 
+# The following services are for the Boundary component of the workshop, 
+# which demonstrates secure access brokering to protected resources.
+  boundary-db:
+    image: postgres:16
+    container_name: zero_trust_boundary_db
+    profiles: [access-control]
+    environment:
+      POSTGRES_DB: ${BOUNDARY_PG_DB}
+      POSTGRES_USER: ${BOUNDARY_PG_USER}
+      POSTGRES_PASSWORD: ${BOUNDARY_PG_PASSWORD}
+    volumes:
+      - boundary_db_data:/var/lib/postgresql/data
+    networks:
+      - net-boundary-control
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BOUNDARY_PG_USER} -d ${BOUNDARY_PG_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  boundary-controller:
+    image: hashicorp/boundary-enterprise:0.21.2-ent
+    container_name: zero_trust_boundary_controller
+    profiles: [access-control]
+    depends_on:
+      boundary-db:
+        condition: service_healthy
+    command: ["boundary", "server", "-config", "/boundary/config/controller.hcl"]
+    cap_add:
+      - IPC_LOCK
+    environment:
+      BOUNDARY_POSTGRES_URL: ${BOUNDARY_PG_URL}
+      BOUNDARY_LICENSE: ${BOUNDARY_LICENSE}
+      BOUNDARY_ROOT_KEY: ${BOUNDARY_ROOT_KEY}
+      BOUNDARY_WORKER_AUTH_KEY: ${BOUNDARY_WORKER_AUTH_KEY}
+      BOUNDARY_RECOVERY_KEY: ${BOUNDARY_RECOVERY_KEY}
+    volumes:
+      - ./boundary/config:/boundary/config:Z
+      - boundary_controller_data:/boundary/data
+    ports:
+      - "9200:9200"
+    networks:
+      - net-boundary-control
+
+  boundary-ingress-worker:
+    image: hashicorp/boundary-enterprise:0.21.2-ent
+    container_name: zero_trust_boundary_ingress
+    profiles: [access-control]
+    depends_on:
+      boundary-controller:
+        condition: service_started
+    command: ["boundary", "server", "-config", "/boundary/config/ingress-worker.hcl"]
+    cap_add:
+      - IPC_LOCK
+    environment:
+      BOUNDARY_LICENSE: ${BOUNDARY_LICENSE}
+      BOUNDARY_WORKER_AUTH_KEY: ${BOUNDARY_WORKER_AUTH_KEY}
+      BOUNDARY_WORKER_AUTH_STORAGE_KEY: ${BOUNDARY_WORKER_AUTH_STORAGE_KEY}
+    volumes:
+      - ./boundary/config:/boundary/config:Z
+      - boundary_ingress_data:/boundary/data
+    ports:
+      - "9202:9202"
+    networks:
+      - net-boundary-control
+      - net-boundary-dmz
+
+  boundary-egress-worker:
+    image: hashicorp/boundary-enterprise:0.21.2-ent
+    container_name: zero_trust_boundary_egress
+    profiles: [access-control]
+    depends_on:
+      boundary-ingress-worker:
+        condition: service_started
+    command: ["boundary", "server", "-config", "/boundary/config/egress-worker.hcl"]
+    cap_add:
+      - IPC_LOCK
+    environment:
+      BOUNDARY_LICENSE: ${BOUNDARY_LICENSE}
+      BOUNDARY_WORKER_AUTH_KEY: ${BOUNDARY_WORKER_AUTH_KEY}
+      BOUNDARY_WORKER_AUTH_STORAGE_KEY: ${BOUNDARY_WORKER_AUTH_STORAGE_KEY}
+    volumes:
+      - ./boundary/config:/boundary/config:Z
+      - boundary_egress_data:/boundary/data
+    networks:
+      - net-boundary-dmz
+      - net-boundary-private
+      - net-data
+
+  boundary-target:
+    image: nginx:alpine
+    container_name: zero_trust_boundary_target
+    profiles: [access-control]
+    networks:
+      - net-boundary-private
+
+  boundary-ssh:
+    image: rastasheep/ubuntu-sshd:18.04
+    container_name: zero_trust_boundary_ssh
+    profiles: [access-control]
+    networks:
+      - net-boundary-private      
+
 networks:
   net-frontend:
     driver: bridge
@@ -239,6 +363,22 @@ networks:
   net-egress:
     driver: bridge
 
+# Boundary services are on their own set of internal networks to simulate a real-world deployment 
+# where the controller and workers would be in separate network zones for security. 
+# The target is on a private network that only the egress worker can access, 
+# demonstrating how Boundary can broker access to resources in a protected network segment.    
+  net-boundary-control:
+    driver: bridge
+    internal: true
+
+  net-boundary-dmz:
+    driver: bridge
+    internal: true
+
+  net-boundary-private:
+    driver: bridge
+    internal: true    
+
 volumes:
   db_data:
   vault_data:
@@ -247,3 +387,9 @@ volumes:
   openldap-data:
   openldap-config:
   keycloak_data:
+
+# Boundary volumes for persistence of database and server state across restarts.
+  boundary_db_data:
+  boundary_controller_data:
+  boundary_ingress_data:
+  boundary_egress_data:

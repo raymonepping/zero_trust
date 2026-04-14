@@ -59,7 +59,7 @@ The same backend and frontend stay in place throughout. What changes is the cred
 
 ## Architecture
 
-The diagram below reflects the current `docker-compose.yml` relationships, network boundaries, and shared volumes.
+The diagrams below reflect the current `docker-compose.yml` relationships, network boundaries, and shared volumes. For the full architectural narrative — including the two access planes and zero-trust principles — see [docs/architecture.md](./docs/architecture.md).
 
 ```text
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -116,16 +116,61 @@ The diagram below reflects the current `docker-compose.yml` relationships, netwo
           ╚═════════════════════════════╝
 ```
 
+### Boundary access-control profile — multi-hop architecture
+
+The `access-control` profile adds a three-zone Boundary deployment. SSH sessions are brokered through two worker hops before reaching the protected target — the client never has direct network access to the private network.
+
+```text
+  SSH Client / Boundary Desktop App
+      │
+      │  :9200  authenticate
+      │  :9202  SSH proxy (multi-hop)
+      │
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  net-boundary-control  [profile: access-control]                             ║
+║                                                                              ║
+║  ┌──────────────────┐   ┌────────────────────────────────────────────────┐   ║
+║  │  boundary-db     │◄──│  boundary-controller  :9200 api  :9201 cluster │   ║
+║  │  (Postgres 16)   │   └────────────────────────────────────────────────┘   ║
+║  └──────────────────┘                                                        ║
+║                        ┌────────────────────────────────────────────────┐    ║
+║                        │  ingress-worker                       :9202    │    ║
+║                        └────────────────────────────────────────────────┘    ║
+╚══════════════════════════════════════╦═══════════════════════════════════════╝
+                                       │  hop 1  (control plane → DMZ)
+╔══════════════════════════════════════╩═══════════════════════════════════════╗
+║  net-boundary-dmz                                                            ║
+║                                                                              ║
+║                        ┌────────────────────────────────────────────────┐    ║
+║                        │  egress-worker                                 │    ║
+║                        └────────────────────────────────────────────────┘    ║
+╚══════════════════════════════════════╦═══════════════════════════════════════╝
+                                       │  hop 2  (DMZ → private network)
+╔══════════════════════════════════════╩═══════════════════════════════════════╗
+║  net-boundary-private                                                        ║
+║                                                                              ║
+║       ┌────────────────────────────────┐    ┌────────────────────────────┐   ║
+║       │  boundary-ssh                  │    │  boundary-target           │   ║
+║       │  ubuntu-sshd            :22    │    │  nginx              :80    │   ║
+║       └────────────────────────────────┘    └────────────────────────────┘   ║
+║                                                                              ║
+║  db (PostgreSQL :5432) is also on this network (reachable via egress)        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
 ### Network isolation
 
-Four Docker networks enforce strict traffic boundaries. Services can only talk to services on a shared network — there is no cross-network routing.
+Seven Docker networks enforce strict traffic boundaries. Services can only talk to services on a shared network — there is no cross-network routing. The three `net-boundary-*` networks are only active with the `access-control` profile.
 
 | Network | Services | Purpose |
 | ------- | -------- | ------- |
 | `net-frontend` | `frontend` | Isolates the UI from everything except the browser |
 | `net-backend` | `frontend`, `backend` | The only path from frontend to the API |
-| `net-data` | `backend`, `db`, `vault`, `vault-agent`, `ollama`, `openldap`, `ldap-admin`, `keycloak` | All internal service communication; `ldap-admin` is optional and profile-gated |
+| `net-data` | `backend`, `db`, `vault`, `vault-agent`, `ollama`, `openldap`, `ldap-admin`, `keycloak`, `boundary-egress-worker` | All internal service communication; `ldap-admin` is profile-gated (`tools`) |
 | `net-egress` | `ollama` | Allows model pulls from the internet; all other services are isolated |
+| `net-boundary-control` | `boundary-db`, `boundary-controller`, `boundary-ingress-worker` | Boundary control plane; fully internal |
+| `net-boundary-dmz` | `boundary-ingress-worker`, `boundary-egress-worker` | Transit zone between the two worker hops |
+| `net-boundary-private` | `boundary-egress-worker`, `boundary-target`, `boundary-ssh`, `db` | Protected network; only the egress worker can reach targets here |
 
 **Key consequences of this model:**
 
@@ -133,6 +178,8 @@ Four Docker networks enforce strict traffic boundaries. Services can only talk t
 - The **backend is the only application boundary** — it owns authentication, authorisation, and credential management
 - **Keycloak authenticates users against OpenLDAP**, and reaches back to the backend via `/ciba/request` for CIBA approval delegation
 - **Vault Agent and backend share credentials through a Docker named volume** (`vault-agent-secrets`), not an HTTP API — the backend reads a rendered JSON file, never calling Vault directly in the `agent-dynamic` connector phase
+- **Boundary enforces zero-trust access to SSH targets** — the client authenticates to the controller, and the session is proxied through ingress → egress workers without the client ever touching `net-boundary-private` directly
+- **`db` is dual-homed** on `net-data` and `net-boundary-private` — it is reachable both by the backend (application path) and through Boundary (brokered access path)
 
 ---
 
@@ -142,13 +189,19 @@ Four Docker networks enforce strict traffic boundaries. Services can only talk t
 | ------- | ------------- | ---- | ---- |
 | `frontend` | `repping/zero-trust-frontend` | `8088` | React/Vite UI — student interface and CIBA approval flow |
 | `backend` | `repping/zero-trust-backend` | `3000` | Express API — connector execution, JWT/CIBA logic, Vault integration |
-| `db` | `./db` (Postgres 17) | `5432` | PostgreSQL with RLS policies and dynamic Vault roles |
+| `db` | `./db` (Postgres 17) | `5432` | PostgreSQL with RLS policies and dynamic Vault roles; also on `net-boundary-private` |
 | `vault` | `hashicorp/vault-enterprise` | `8200` | Secrets engine, auth methods, dynamic credentials, audit log |
 | `vault-agent` | `hashicorp/vault-enterprise` | — | Sidecar: authenticates to Vault, renders `db-creds.json` to shared volume |
 | `openldap` | `osixia/openldap` | `1389` | User directory — source of truth for identities and group membership |
 | `ldap-admin` | `osixia/phpldapadmin` | `8081` | Optional LDAP admin UI, started through the `tools` profile or on demand |
 | `keycloak` | `quay.io/keycloak/keycloak` | `8082` | OIDC provider — JWT issuance, role mapping, CIBA backchannel auth |
 | `ollama` | `./ollama` | `11434` | Local LLM (llama3.2 + nomic-embed-text) for `/api/ask` |
+| `boundary-db` | `postgres:16` | — | Boundary's PostgreSQL backend; stores controller state (`access-control` profile) |
+| `boundary-controller` | `hashicorp/boundary-enterprise` | `9200`, `9201` | Boundary control plane — session management, target authorization (`access-control` profile) |
+| `boundary-ingress-worker` | `hashicorp/boundary-enterprise` | `9202` | Ingress worker — public-facing proxy entry point; bridges control plane and DMZ (`access-control` profile) |
+| `boundary-egress-worker` | `hashicorp/boundary-enterprise` | — | Egress worker — connects from DMZ into the private network to reach targets (`access-control` profile) |
+| `boundary-target` | `nginx:alpine` | `80` | Demo HTTP target; reachable only through Boundary egress (`access-control` profile) |
+| `boundary-ssh` | `rastasheep/ubuntu-sshd` | `22` | SSH target; reached via Boundary multi-hop proxy (`access-control` profile) |
 
 ### Persistent volumes
 
@@ -161,6 +214,10 @@ Four Docker networks enforce strict traffic boundaries. Services can only talk t
 | `openldap-data` | `openldap` | LDAP directory entries |
 | `openldap-config` | `openldap` | LDAP server configuration |
 | `keycloak_data` | `keycloak` | Realm config, client registrations, user data |
+| `boundary_db_data` | `boundary-db` | Boundary PostgreSQL data directory |
+| `boundary_controller_data` | `boundary-controller` | Controller persistent state |
+| `boundary_ingress_data` | `boundary-ingress-worker` | Ingress worker persistent state |
+| `boundary_egress_data` | `boundary-egress-worker` | Egress worker persistent state |
 
 ---
 
@@ -448,6 +505,8 @@ Reads remain role-scoped, while writes require explicit approval through CIBA.
 | Swagger UI | `http://localhost:3000/docs` | Exposed when `EXPOSE_ROUTES=true` |
 | PostgreSQL | `localhost:5432` | DB port |
 | OpenLDAP | `localhost:1389` | LDAP |
+| Boundary Controller | `http://localhost:9200` | Boundary API and UI (`access-control` profile) |
+| Boundary Ingress Worker | `localhost:9202` | SSH proxy entry point (`access-control` profile) |
 
 Note: frontend host port comes from `VITE_HOST_PORT` and defaults to `8088` in the current Compose file.
 

@@ -21,6 +21,9 @@ This file is the documentation map for the Zero Trust Workshop. The root [README
 - [README.md](./README.md)  
   Main workshop overview, architecture, startup flow, and recommended lab order.
 
+- [docs/architecture.md](./docs/architecture.md)  
+  Full architectural reference — two access planes (end-user vs. operator), unified diagram, zero-trust principles, and network topology.
+
 - [docs/readme_environment_settings.md](./docs/readme_environment_settings.md)
   Root `.env` reference, variable behavior, fallbacks, and security notes.
 
