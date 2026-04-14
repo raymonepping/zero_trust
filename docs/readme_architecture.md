@@ -116,10 +116,10 @@ The diagram below shows both planes together with all supporting services.
                                 │  brokered session · no direct network path
                                 │
                                 ▼
-         ╔════════════════╗                     ╔════════════════╗
-         ║  PostgreSQL    ║                     ║  Ubuntu SSH    ║
-         ║    :5432       ║                     ║      :22       ║
-         ╚════════════════╝                     ╚════════════════╝
+     ╔════════════════╗             ╔════════════════╗
+     ║  PostgreSQL    ║             ║  Ubuntu SSH    ║
+     ║    :5432       ║             ║      :22       ║
+     ╚════════════════╝             ╚════════════════╝
 ```
 
 ---
