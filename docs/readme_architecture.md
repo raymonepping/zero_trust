@@ -30,7 +30,7 @@ The answer is two distinct access planes:
 | Actor | Plane | Path | Zero-Trust Mechanism |
 | ----- | ----- | ---- | -------------------- |
 | End user (browser) | Application | Frontend → Backend → PostgreSQL | Vault dynamic credentials, Keycloak JWT |
-| Operator (DBA / SRE) | Infrastructure | SSH Client → Boundary → PostgreSQL | Brokered multi-hop session, no direct network access |
+| Operator (DBA / SRE) | Infrastructure | Boundary Client → Boundary → PostgreSQL / Ubuntu | Vault-brokered credentials, multi-hop session, no direct network access |
 
 Neither actor holds a persistent credential. Neither has a direct route to the database.
 
@@ -44,7 +44,7 @@ PostgreSQL is **dual-homed**: it sits on `net-data` (the application network) an
   Application traffic                     Operator traffic
   ─────────────────────────               ────────────────────────────────────
   non-human · programmatic                human · interactive
-  short-lived Vault credentials           brokered session · no raw creds
+  short-lived Vault credentials           Vault-brokered operator credentials
   role-scoped via JWT                     no direct network access
 
          Backend (Express)                        Egress Worker
@@ -56,6 +56,12 @@ PostgreSQL is **dual-homed**: it sits on `net-data` (the application network) an
                              ║  PostgreSQL    ║
                              ║    :5432       ║
                              ╚════════════════╝
+                                                   ▲
+                                                   │
+                                            ╔══════════════╗
+                                            ║ Ubuntu SSH   ║
+                                            ║     :22      ║
+                                            ╚══════════════╝
 ```
 
 ---
@@ -86,7 +92,7 @@ The diagram below shows both planes together with all supporting services.
                              │
   ┌──────────────── OPERATOR PLANE ──────────────────┐
   │                                                  │
-  │  SSH Client / Boundary Desktop App               │
+  │  Boundary Client / Desktop App                   │
   │    │  :9200  authenticate                        │
   │    │  :9202  proxy session                       │
   │    ▼                                             │
@@ -103,17 +109,17 @@ The diagram below shows both planes together with all supporting services.
   │                             │  hop 2             │
   │  ┌──────────────────────────▼───────────────┐    │
   │  │  net-boundary-private                    │    │
-  │  │  boundary-ssh  :22   boundary-target :80 │    │
+  │  │  boundary-ssh :22   db :5432   nginx :80 │    │
   │  └──────────────────────────┬───────────────┘    │
-  │                             │  net-boundary-private
+  │                             │  Vault-brokered DB creds / SSH certs
   └─────────────────────────────┼────────────────────┘
-                                │  brokered session · no credential hand-off
+                                │  brokered session · no direct network path
                                 │
                                 ▼
-                       ╔════════════════╗
-                       ║  PostgreSQL    ║   ← shared data store
-                       ║    :5432       ║      dual-homed
-                       ╚════════════════╝
+         ╔════════════════╗                     ╔════════════════╗
+         ║  PostgreSQL    ║                     ║  Ubuntu SSH    ║
+         ║    :5432       ║                     ║      :22       ║
+         ╚════════════════╝                     ╚════════════════╝
 ```
 
 ---
@@ -180,10 +186,10 @@ The workshop progresses through multiple credential strategies, all managed by s
 
 ## Operator Plane — Boundary
 
-The operator plane is the **human access path**. An operator connects through Boundary — they receive a brokered session and never hold a raw database credential or a direct route to the target.
+The operator plane is the **human access path**. An operator connects through Boundary — they receive a brokered session and never hold a raw database credential, a long-lived SSH trust artifact, or a direct route to the target.
 
 ```text
-  SSH Client / Boundary Desktop App
+  Boundary Client / Desktop App
       │
       │  :9200  authenticate and authorize
       │  :9202  SSH proxy (multi-hop)
@@ -228,9 +234,14 @@ The three-zone layout reflects a real-world DMZ pattern:
 | ------------- | ----------------------- | -------------------------------------------------------------- |
 | Control plane | `net-boundary-control`  | Controller manages sessions and authorisation; internal only   |
 | DMZ           | `net-boundary-dmz`      | Ingress and egress workers can see each other but nothing else |
-| Private       | `net-boundary-private`  | Targets live here; only the egress worker can reach them       |
+| Private       | `net-boundary-private`  | PostgreSQL, Ubuntu SSH, and demo targets live here; only the egress worker can reach them |
 
-The SSH client connects to the ingress worker at `:9202`. The ingress worker tunnels the session to the egress worker (hop 1). The egress worker makes the final connection to the target (hop 2). **At no point does the client have a routable path to the target network.**
+The Boundary client connects to the ingress worker at `:9202`. The ingress worker tunnels the session to the egress worker (hop 1). The egress worker makes the final connection to the target (hop 2). **At no point does the client have a routable path to the target network.**
+
+For the workshop's operator path, Boundary brokers two credential types through Vault:
+
+- **PostgreSQL access** uses Vault-issued dynamic database credentials from `database/creds/*`
+- **Ubuntu access** uses Vault's SSH client signer at `ssh-client-signer/sign/boundary-role`
 
 ---
 
@@ -240,10 +251,28 @@ Both planes rely on a shared identity and credential layer:
 
 | Service | Role | Used by |
 | --- | --- | --- |
-| **Vault** | Credential authority — issues dynamic DB credentials, validates JWT auth, manages AppRole identities | Backend (all dynamic connector modes), Vault Agent |
+| **Vault** | Credential authority — issues dynamic DB credentials, signs SSH client credentials, validates JWT auth, manages AppRole identities | Backend (all dynamic connector modes), Vault Agent, Boundary operator path |
 | **Keycloak** | OIDC provider — issues JWTs, maps LDAP roles to JWT claims, handles CIBA backchannel auth | Backend (jwt-* connector modes), frontend (CIBA approval UI) |
 | **OpenLDAP** | Identity source — users, groups, role assignments | Keycloak (user federation), LDAP Admin (management) |
 | **Vault Agent** | Sidecar credential renderer — authenticates to Vault and writes `db-creds.json` to a shared volume | Backend in `agent-dynamic` mode |
+
+### Credential lifecycle in the operator plane
+
+```text
+  Boundary Client
+      │
+      │ authenticate to Boundary
+      ▼
+  Boundary Controller
+      │
+      ├──► Vault  ──► database/creds/<role>             ──► short-lived PostgreSQL username/password
+      │
+      └──► Vault  ──► ssh-client-signer/sign/boundary-role ──► short-lived signed SSH client certificate
+                                                             
+  Ingress Worker ──► Egress Worker ──► PostgreSQL :5432 / Ubuntu SSH :22
+```
+
+The important distinction is that Boundary brokers the session and asks Vault for the credential material at session time. The operator does not need a long-lived database password or a static SSH private key that is trusted by the target.
 
 ### Credential lifecycle in the application plane
 
@@ -269,8 +298,9 @@ Both planes rely on a shared identity and credential layer:
 | Machine identity, not shared secrets | Backend → Vault | AppRole: role-id + secret-id instead of a root token |
 | Identity-aware access | Backend → Vault → PostgreSQL | JWT role claim maps to Vault DB role maps to Postgres role |
 | Explicit approval for high-impact writes | Frontend → Backend → Keycloak | CIBA backchannel: write operations require user approval on a second device |
-| No direct network access for humans | Operator → PostgreSQL | Boundary multi-hop: two worker hops, client never touches the private network |
-| Short-lived sessions | Operator access | Boundary issues session tokens, not persistent credentials |
+| No direct network access for humans | Operator → PostgreSQL / Ubuntu | Boundary multi-hop: two worker hops, client never touches the private network |
+| No long-lived operator credentials | Operator → PostgreSQL / Ubuntu | Vault issues dynamic DB credentials and signs short-lived SSH client credentials for Boundary-brokered sessions |
+| Short-lived sessions | Operator access | Boundary issues session tokens and brokers ephemeral credentials, not persistent secrets |
 | Audit trail | Both planes | Vault audit log (every credential request), Boundary session recording |
 | Network segmentation | All services | Seven isolated Docker networks; no cross-network routing without an explicit bridge |
 
