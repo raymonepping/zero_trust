@@ -13,5 +13,7 @@ storage "raft" {
   path = "/vault/file"
 }
 
+license_path = "/vault/config/vault.hclic"
+
 # Optional, but nice for demos
 log_level = "info"
