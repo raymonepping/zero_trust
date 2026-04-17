@@ -11,6 +11,7 @@ services:
       context: ./db
       dockerfile: Dockerfile
     container_name: zero_trust_db
+    profiles: [base]
     environment:
       POSTGRES_DB: appdb
       POSTGRES_USER: appuser
@@ -29,8 +30,9 @@ services:
       retries: 5
 
   vault:
-    image: hashicorp/vault-enterprise:1.21.4-ent
+    image: hashicorp/vault-enterprise:2.0.0-ent
     container_name: zero_trust_vault
+    profiles: [security]
     cap_add:
       - IPC_LOCK
     ports:
@@ -43,6 +45,7 @@ services:
     environment:
       VAULT_ADDR: "http://127.0.0.1:8200"
       VAULT_LICENSE_PATH: "/vault/config/vault.hclic"
+      SKIP_SETCAP: "true"
     command: vault server -config=/vault/config/config.hcl
     networks:
       - net-data
@@ -53,15 +56,17 @@ services:
       retries: 5
 
   vault-agent:
-    image: hashicorp/vault-enterprise:1.21.4-ent
+    image: hashicorp/vault-enterprise:2.0.0-ent
     container_name: zero_trust_vault_agent
+    profiles: [security]
     restart: unless-stopped
+    user: "0:0"
     cap_add:
       - IPC_LOCK
     entrypoint: ["vault", "agent", "-config=/vault/config/agent.hcl"]
     environment:
-      VAULT_ADDR: ${VAULT_ADDR:-http://vault:8200}
       VAULT_LICENSE_PATH: "/vault/config/vault.hclic"
+      SKIP_SETCAP: "true"
     volumes:
       - ./vault-agent/config:/vault/config:ro
       - ./vault/config/vault.hclic:/vault/config/vault.hclic:ro
@@ -85,6 +90,7 @@ services:
       context: ./ollama
       dockerfile: Dockerfile
     container_name: zero_trust_ollama
+    profiles: [base]
     environment:
       OLLAMA_MODELS: "llama3.2 nomic-embed-text"
     ports:
@@ -94,6 +100,7 @@ services:
     depends_on:
       openldap:
         condition: service_healthy
+        required: false
     networks:
       - net-data
       - net-egress
@@ -118,6 +125,7 @@ services:
     # swap backend files such as connector.js and immediately change auth flows.
     image: repping/zero-trust-backend:1.8.18
     container_name: zero_trust_backend
+    profiles: [base]
     env_file:
       - .env
     environment:
@@ -149,6 +157,7 @@ services:
     # checked-out workshop code instead of a prebuilt image revision.
     image: repping/zero-trust-frontend:1.8.18
     container_name: zero_trust_frontend
+    profiles: [base]
     environment:
       VITE_API_URL: http://backend:3000
       VITE_PORT: ${VITE_PORT:-5173}
@@ -176,6 +185,7 @@ services:
   openldap:
     image: osixia/openldap:1.5.0
     container_name: zero_trust_openldap
+    profiles: [identity]
     restart: unless-stopped
     environment:
       LDAP_ORGANISATION: "MyOrg"
@@ -190,6 +200,7 @@ services:
     depends_on:
       vault:
         condition: service_healthy
+        required: false
     networks:
       - net-data
     healthcheck:
@@ -216,15 +227,19 @@ services:
     depends_on:
       vault:
         condition: service_healthy
+        required: false
       openldap:
         condition: service_healthy
+        required: false
 
 # The keycloak service runs an instance of Keycloak, which is used as the identity provider for the workshop, 
 # allowing participants to explore SSO, OIDC, and other identity management features in the context of Zero Trust. 
 # It is configured to use the OpenLDAP server as its user federation source.
   keycloak:
-    image: quay.io/keycloak/keycloak:26.5.7
+    image: quay.io/keycloak/keycloak:26.6.1
     container_name: zero_trust_keycloak
+    profiles: [identity]
+    restart: unless-stopped
     command: >-
       start-dev
       --spi-ciba-auth-channel-ciba-http-auth-channel-http-authentication-channel-uri=http://backend:3000/ciba/request
@@ -250,7 +265,7 @@ services:
 # The following services are for the Boundary component of the workshop, 
 # which demonstrates secure access brokering to protected resources.
   boundary-db:
-    image: postgres:16
+    image: postgres:16.13
     container_name: zero_trust_boundary_db
     profiles: [access-control]
     environment:
@@ -262,10 +277,11 @@ services:
     networks:
       - net-boundary-control
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${BOUNDARY_PG_USER} -d ${BOUNDARY_PG_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   boundary-controller:
     image: hashicorp/boundary-enterprise:0.21.2-ent
@@ -338,23 +354,27 @@ services:
       - net-data
 
   boundary-target:
-    image: nginx:alpine
+    image: nginx:1.30.0-alpine
     container_name: zero_trust_boundary_target
     profiles: [access-control]
     networks:
       - net-boundary-private
 
   boundary-ssh:
-    image: rastasheep/ubuntu-sshd:18.04
+    build:
+      context: ./ubuntu
+      dockerfile: Dockerfile
     container_name: zero_trust_boundary_ssh
     profiles: [access-control]
+    ports:
+      - "2222:22"
     networks:
       - net-boundary-private
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
     container_name: zero_trust_minio
-    profiles: [access-control]
+    profiles: [storage]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
