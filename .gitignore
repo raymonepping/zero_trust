@@ -125,8 +125,16 @@ vault/init.txt
 vault/config/vault.hclic
 vault/data/
 vault/audit/
+vault/plugins/*
+!vault/plugins/.gitkeep
 vault-agent/config/role_id
 vault-agent/config/secret_id
+
+########################################
+# 🔌 Plugins (Root Level)
+########################################
+plugins/*
+!plugins/.gitkeep
 
 ########################################
 # 🚧 Boundary

@@ -1,4 +1,4 @@
-FROM hashicorp/vault-enterprise:1.21.3-ent
+FROM hashicorp/vault-enterprise:2.0.0-ent
 
 ENV VAULT_DEV_ROOT_TOKEN_ID=root
 ENV VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200

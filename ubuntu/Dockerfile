@@ -27,6 +27,12 @@ RUN useradd -m -s /bin/bash boundary && \
     usermod -aG sudo boundary && \
     echo "boundary ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
+# Create danielle user for Vault OS secrets engine demo
+RUN useradd -m -s /bin/bash danielle && \
+    echo "danielle:YnkXV/6g1+Bd7fKKjfM07g==" | chpasswd && \
+    usermod -aG sudo danielle && \
+    echo "danielle ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
 # Set root password
 RUN echo "root:password" | chpasswd
 

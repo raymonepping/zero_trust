@@ -38,13 +38,15 @@ services:
     ports:
       - "8200:8200"
     volumes:
-      - ./vault/config.hcl:/vault/config/config.hcl:Z
-      - ./vault/config/vault.hclic:/vault/config/vault.hclic:Z
-      - ./vault/audit:/vault/audit
       - vault_data:/vault/file
+      - ./vault/config.hcl:/vault/config/config.hcl:Z
+      - ./vault/config/vault_v2.hclic:/vault/config/vault_v2.hclic:Z
+      - ./vault/audit:/vault/audit
+      - ./vault/plugins:/vault/plugins:Z
+      - ./plugins:/vault/plugins:Z
     environment:
       VAULT_ADDR: "http://127.0.0.1:8200"
-      VAULT_LICENSE_PATH: "/vault/config/vault.hclic"
+      VAULT_LICENSE: "${VAULT_LICENSE}"
       SKIP_SETCAP: "true"
     command: vault server -config=/vault/config/config.hcl
     networks:
@@ -65,11 +67,11 @@ services:
       - IPC_LOCK
     entrypoint: ["vault", "agent", "-config=/vault/config/agent.hcl"]
     environment:
-      VAULT_LICENSE_PATH: "/vault/config/vault.hclic"
+      VAULT_LICENSE_PATH: "/vault/config/vault_v2.hclic"
       SKIP_SETCAP: "true"
     volumes:
       - ./vault-agent/config:/vault/config:ro
-      - ./vault/config/vault.hclic:/vault/config/vault.hclic:ro
+      - ./vault/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
       - vault-agent-secrets:/vault/secrets
     networks:
       - net-data
@@ -370,6 +372,7 @@ services:
       - "2222:22"
     networks:
       - net-boundary-private
+#     - net-data <-- needed for Linux Password Rotataless tests
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1

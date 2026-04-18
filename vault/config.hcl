@@ -13,5 +13,8 @@ storage "raft" {
   path = "/vault/file"
 }
 
+# Plugin directory for custom plugins
+plugin_directory = "/vault/plugins"
+
 # Optional, but nice for demos
 log_level = "info"
