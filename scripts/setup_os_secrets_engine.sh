@@ -3,7 +3,7 @@ set -e
 
 # Configuration
 export VAULT_ADDR='http://127.0.0.1:8200'
-export VAULT_TOKEN='hvs.REDACTED_TOKEN'
+export VAULT_TOKEN="${VAULT_TOKEN:-hvs.REPLACE_WITH_YOUR_TOKEN}"
 SSH_CONTAINER="zero_trust_boundary_ssh"
 SSH_USER="danielle"
 INITIAL_PASSWORD="YnkXV/6g1+Bd7fKKjfM07g=="

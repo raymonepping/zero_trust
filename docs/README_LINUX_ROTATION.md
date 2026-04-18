@@ -105,7 +105,7 @@ This script will:
 
 ```bash
 export VAULT_ADDR='http://127.0.0.1:8200'
-export VAULT_TOKEN='hvs.REDACTED_TOKEN'
+export VAULT_TOKEN='hvs.REPLACE_WITH_YOUR_TOKEN'
 ```
 
 ### Read Current Password
@@ -282,7 +282,7 @@ sleep 10
 
 ```bash
 export VAULT_ADDR='http://127.0.0.1:8200'
-export VAULT_TOKEN='hvs.REDACTED_TOKEN'
+export VAULT_TOKEN='hvs.REPLACE_WITH_YOUR_TOKEN'
 
 vault read os/hosts/ssh-host1/accounts/danielle/creds
 ```
@@ -291,7 +291,7 @@ vault read os/hosts/ssh-host1/accounts/danielle/creds
 
 ```bash
 export VAULT_ADDR='http://127.0.0.1:8200'
-export VAULT_TOKEN='hvs.REDACTED_TOKEN'
+export VAULT_TOKEN='hvs.REPLACE_WITH_YOUR_TOKEN'
 
 # Trigger rotation
 vault write -f os/hosts/ssh-host1/accounts/danielle/rotate
