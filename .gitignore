@@ -12,6 +12,9 @@ Thumbs.db
 git_commit.sh
 FOLDER_TREE.md
 data/*.json
+scripts/Boundary/reset_boundary_admin.sh
+scripts/Rotation/add_user.sh
+scripts/Boundary/setup_boundary_users.sh
 
 ########################################
 # 💻 IDE & Editor Configs
@@ -157,3 +160,13 @@ boundary/notices
 *.log
 crash.log
 justfile
+
+# ── Added by commit_gh --harden ─────────────────────────────
+*.env
+.vault.*
+*.vault
+*.jsonl
+input/*
+!input/.gitkeep
+output/*
+!output/.gitkeep

@@ -43,7 +43,7 @@ services:
       - ./vault/config/vault_v2.hclic:/vault/config/vault_v2.hclic:Z
       - ./vault/audit:/vault/audit
       - ./vault/plugins:/vault/plugins:Z
-      - ./plugins:/vault/plugins:Z
+    # - ./plugins:/vault/plugins:Z
     environment:
       VAULT_ADDR: "http://127.0.0.1:8200"
       VAULT_LICENSE: "${VAULT_LICENSE}"

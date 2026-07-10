@@ -1,5 +1,6 @@
 ui = true
 disable_mlock = true
+license_path = "/vault/config/vault_v2.hclic"
 
 api_addr = "http://vault:8200"
 cluster_addr = "http://vault:8201"
