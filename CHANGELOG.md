@@ -8,6 +8,7 @@
 - Add lab-only references `connector.lab-approle.js` (static KV) and `connector.lab-agent-dynamic.js` (Agent file); the original `connector.approle.js` and `connector.agent-dynamic.js` keep their legacy behaviour.
 - Seed automated instances from tracked `data/fixtures`: six fictional users and all four classifications.
 - Cap readable classifications by the caller's role on every read endpoint and `/ask`, apply the trust filter to `/orders`, and report the same result in the UI's data access panel, which now refreshes immediately on sign-in and sign-out.
+- Make `make reset` delete one whole instance after typed confirmation, or `CONFIRM=<instance>` in scripts.
 - Show masked Compose failure output and name missing `.env` or `config/defaults.env` before starting.
 - Rebuild the frontend in Vault daylight glass as a four-view console (Overview, Data, Approvals, Ask), with a credential ladder and a live per-identity Data view. Publish images 1.8.19.
 

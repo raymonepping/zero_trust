@@ -17,6 +17,8 @@ make status RUNTIME=podman
 make down RUNTIME=podman
 ```
 
+`make down` stops an instance and keeps everything, so `make up` resumes it. `make reset` puts it back to square one: it deletes the instance's containers, volumes, networks, built images, learner code, Vault data and unseal keys. It asks you to type the instance name; in scripts, pass `CONFIRM=<instance>`. Other instances, your root `.env` and the tracked source are untouched.
+
 `make up` creates a fresh baseline or resumes a known reference stage; it never silently returns a later instance to wired. Existing edited learner code is protected; resume its selected services directly through Compose.
 
 `make` alone prints help. Use one action per invocation. IDs are two digits. `make resolve LAB=03` and `make resolve lab 03` are aliases, including under parallel Make. Mixed spellings, multiple actions and unknown IDs fail before runtime dispatch. `RUNTIME=auto` works only when exactly one engine is reachable. If Docker points at Podman's compatibility socket, choose one explicitly.
@@ -56,7 +58,7 @@ Authenticated user-role selection in the existing JWT examples remains applicati
 
 `make bootstrap` starts just Vault and establishes custody/automation identities for manual exercises, without enabling application mounts. `make unseal` only unseals an existing initialized instance. Vault's live state is checked every time; a saved recovery file is never treated as proof of initialization. An initialized instance with missing `.secrets/<INSTANCE>/init.json`, or a fresh volume with stale recovery material, fails safely. Restore matching storage and recovery files before retrying.
 
-Expired scoped automation credentials are repaired through private bootstrap custody; runtime AppRole secret IDs are reused while valid. Root is retained as private recovery material and is not delivered to the application. `down` stops automation project containers and preserves volumes. Selective reset/backward rollback is unsupported. Use a fresh INSTANCE/PORT_BASE for an exact clean starting point; `make reset` explains this and deletes nothing.
+Expired scoped automation credentials are repaired through private bootstrap custody; runtime AppRole secret IDs are reused while valid. Root is retained as private recovery material and is not delivered to the application. `down` stops automation project containers and preserves volumes. Moving an instance backward to a chosen lab is unsupported: use `make reset` to start it again from nothing, or a fresh INSTANCE/PORT_BASE to keep it.
 
 ## Manual resource adoption
 
@@ -66,7 +68,7 @@ Expired scoped automation credentials are repaired through private bootstrap cus
 
 ## Fixtures, extensions and legacy scripts
 
-Initial schema and the tracked `data/fixtures` data (six fictional users, all four classifications) are loaded in a transaction only into empty application tables. To pick up changed fixtures or frontend source, use a fresh INSTANCE: populated tables are preserved, and local images are built only when missing. Existing populated tables are preserved; missing fixtures fail setup instead of generating random data. A DB migration row records the initial schema version. Subsequent schema changes need a new reviewed migration; deleting a local receipt does not trigger data truncation.
+Initial schema and the tracked `data/fixtures` data (six fictional users, all four classifications) are loaded in a transaction only into empty application tables. To pick up changed fixtures or frontend source, run `make reset` or use a fresh INSTANCE: populated tables are preserved, and local images are built only when missing. Existing populated tables are preserved; missing fixtures fail setup instead of generating random data. A DB migration row records the initial schema version. Subsequent schema changes need a new reviewed migration; deleting a local receipt does not trigger data truncation.
 
 Ollama, Boundary, OS rotation, LDAP admin and MinIO remain optional through the original Compose/scripts path. The new application lab chain does not start them. Do not operate both automation and legacy script configuration against the same instance. Legacy scripts are retained until the release validation gate passes; they are not invoked by new playbooks. Labs 04 and 07 use `data/connector.lab-approle.js` and `data/connector.lab-agent-dynamic.js`; `data/connector.approle.js` and `data/connector.agent-dynamic.js` keep their original behaviour for `scripts/switch_connector.sh`.
 
@@ -85,4 +87,4 @@ Use a fresh `validation-*` instance and an unused port base for each scenario. T
 .venv/bin/python automation/scenarios.py drift-jump --runtime podman --instance validation-jump-new --port-base 31000
 ```
 
-The manual scenario creates a real AppRole solution outside Terraform, verifies it, imports its structure, protects/replaces its edited connector explicitly and exercises sealed restart. Recovery revokes only its own automation credential, checks data/identity preservation and tests missing-custody/backward/reset refusal. Drift-jump adds a temporary deny-only policy difference, verifies detection/repair, then resolves the missing lab-10 dependency closure.
+The manual scenario creates a real AppRole solution outside Terraform, verifies it, imports its structure, protects/replaces its edited connector explicitly and exercises sealed restart. Recovery revokes only its own automation credential, checks data/identity preservation and tests missing-custody/backward refusal and refusal of an unconfirmed reset. Drift-jump adds a temporary deny-only policy difference, verifies detection/repair, then resolves the missing lab-10 dependency closure.

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sys
 from common import (
     ROOT,
@@ -70,6 +71,61 @@ def missing_inputs(root=ROOT):
     return [f"{k} ({v})" for k, v in hints.items() if not (root / k).is_file()]
 
 
+def confirm_reset(instance, confirm=None):
+    """A reset destroys recovery keys and learner work, so it must be deliberate."""
+    if not confirm and sys.stdin.isatty():
+        print(
+            f"This permanently deletes instance '{instance}': its containers, volumes, "
+            "networks, built images, learner code, Vault data and unseal keys."
+        )
+        try:
+            confirm = input(f"Type {instance} to confirm: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            confirm = ""
+    if confirm != instance:
+        raise WorkshopError(
+            f"Reset not confirmed; nothing was deleted. Run make reset interactively, or pass CONFIRM={instance}."
+        )
+
+
+def reset_instance(engine, project, directories, runner=run):
+    """Remove what belongs to exactly this Compose project, then its private files."""
+    label = "label=com.docker.compose.project=" + project
+
+    def listed(*kind):
+        fmt = "{{.ID}}" if kind[0] == "ps" else "{{.Name}}"
+        return runner(
+            [engine, *kind, "--filter", label, "--format", fmt], capture=True
+        ).split()
+
+    kinds = [
+        ("containers", ("ps", "-a"), ("rm", "-f", "-v")),
+        ("volumes", ("volume", "ls"), ("volume", "rm", "-f")),
+        ("networks", ("network", "ls"), ("network", "rm")),
+    ]
+    for name, query, remove in kinds:
+        found = listed(*query)
+        if found:
+            runner([engine, *remove, *found], capture=True)
+        print(f"{name}: removed {len(found)}")
+    images = [project + "-" + service for service in ["backend", "frontend"]]
+    removed = 0
+    for image in images:
+        if runner([engine, "images", "-q", image], capture=True):
+            runner([engine, "rmi", "-f", image], capture=True)
+            removed += 1
+    print(f"images: removed {removed}")
+    # Vault storage and its unseal keys only ever go together.
+    if any(listed(*query) for _, query, _ in kinds):
+        raise WorkshopError(
+            "Some runtime resources survived; private files were kept. Retry make reset."
+        )
+    for directory in directories:
+        if directory.exists():
+            shutil.rmtree(directory)
+    print("private files: removed")
+
+
 def prepare_existing(config, private):
     atomic_json(private / "run.json", config)
     env = os.environ.copy()
@@ -99,11 +155,12 @@ def main(argv=None):
     data = manifest()
     if action == "help":
         print(
-            "Zero Trust automation: deps doctor labs up down status prepare resolve verify plan drift adopt unseal check bootstrap\n"
+            "Zero Trust automation: deps doctor labs up down reset status prepare resolve verify plan drift adopt unseal check bootstrap\n"
             "Usage: make prepare LAB=03 RUNTIME=docker\n"
             "       make resolve lab 03 RUNTIME=podman\n"
             "Options: INSTANCE=workshop PORT_BASE=18000 OVERWRITE=1\n"
-            "Start with make deps. Learner files: .build/<INSTANCE>/backend/. No destructive reset is automatic."
+            "Start with make deps. Learner files: .build/<INSTANCE>/backend/.\n"
+            "make down stops an instance and keeps its data. make reset deletes it entirely, after confirmation."
         )
         return
     if action == "labs":
@@ -162,10 +219,6 @@ def main(argv=None):
     project = "zt-" + instance
     build = ROOT / ".build" / instance
     private = ROOT / ".secrets" / instance
-    if action == "reset":
-        raise WorkshopError(
-            "Destructive reset is unsupported. Choose a new INSTANCE and PORT_BASE; down preserves volumes."
-        )
     if action == "doctor":
         print(
             json.dumps(
@@ -182,7 +235,7 @@ def main(argv=None):
         for tool in ["terraform", str(ROOT / ".venv/bin/ansible-playbook")]:
             run([tool, "--version"], capture=True)
         return
-    missing = missing_inputs()
+    missing = [] if action == "reset" else missing_inputs()
     if missing:
         raise WorkshopError("Missing required file: " + "; ".join(missing))
     with lock(target["identity"], project):
@@ -192,6 +245,14 @@ def main(argv=None):
             raise WorkshopError(
                 "Instance runtime changed. Use a different INSTANCE or restore its original target."
             )
+        if action == "reset":
+            confirm_reset(instance, os.environ.get("CONFIRM"))
+            reset_instance(target["engine"], project, [build, private])
+            print(f"reset {instance}: passed. Start again with make prepare LAB=01.")
+            return
+        if action == "down" and not (private / "compose.yml").exists():
+            print(f"down {instance}: nothing to stop, this instance was never started.")
+            return
         config = dict(
             zt_root=str(ROOT),
             zt_build=str(build),

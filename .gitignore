@@ -182,3 +182,6 @@ output/*
 .agents/
 .claude/
 .impeccable/
+
+# Tracked defaults, loaded before .env
+!config/defaults.env

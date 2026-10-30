@@ -43,12 +43,12 @@ The Agent stage compares application metadata with the rendered file, and its st
 - A completely fresh baseline passes without starting Vault or Agent. Explicitly building missing local images before up avoids the first-repeat recreation observed through the compatibility API.
 - Manual environment and AppRole solutions pass verification with edited source. Preparing the next lab preserves a previously verified manual solution; repeating preparation preserves in-progress work.
 - Explicit adoption imports manually created AppRole structure and displays its plan before later resolution. Failed-create mount taint recovery verifies the exact live mount type and clears bookkeeping without deleting/recreating a mount.
-- Sealed restart/unseal succeeds. Expired automation credentials are repaired while application AppRole secret IDs and DB row counts remain unchanged. Missing recovery material, backward transitions and reset requests are refused safely.
+- Sealed restart/unseal succeeds. Expired automation credentials are repaired while application AppRole secret IDs and DB row counts remain unchanged. Missing recovery material, backward transitions and unconfirmed reset requests are refused safely.
 - A deny-only policy mutation is detected by drift; explicit resolution repairs it and returns to an empty plan. Forward jumps provision missing database/JWT/role/CIBA dependencies without completing intermediate exercises manually.
 - Internal data-network isolation, instance resume after container/network recreation with volumes retained, and both frontend HTML endpoints were exercised.
 - Private Terraform state and backups were checked against known local credential values without emitting their contents. Bootstrap tune metadata permissions are read-only; fresh KV/auth structure creation is checked separately from existing-resource plan reads.
 
-Detailed live logs remain under the private validation instance directories. A non-secret coverage summary is saved in `.build/validation-summary.json`. Use [the usage guide](usage.md) and `automation/live.py` / `automation/scenarios.py` to reproduce the checks with fresh validation instances and free ports. Never operate another session against a scenario's instance while it is running.
+The validation instances and their detailed logs were later removed with `make reset`. A non-secret coverage summary is saved in `.build/validation-summary.json`. Use [the usage guide](usage.md) and `automation/live.py` / `automation/scenarios.py` to reproduce the checks with fresh validation instances and free ports. Never operate another session against a scenario's instance while it is running.
 
 ## Independent re-validation
 
@@ -62,8 +62,8 @@ Native Docker Engine, Linux controller and x86_64 live runs remain untested here
 
 The JWT examples retain a backend identity exchange plus application-side caller role selection. CIBA approval is enforced by the application, not independently by Vault. Existing optional-auth read endpoints retain anonymous fallback. This migration does not claim caller-bound Vault tokens or a redesign of those application security boundaries.
 
-Selective destructive rollback is unsupported. Existing incompatible mounts require explicit review; reset refuses deletion. Existing populated tables are preserved, and schema evolution requires a new reviewed migration. Masked database passwords use private input receipts plus live behavior checks; automatic resolve does not indiscriminately reset a rotated backend password.
+Selective rollback to a chosen lab is unsupported; `make reset` deletes a whole instance after explicit confirmation. Existing incompatible mounts require explicit review. Existing populated tables are preserved, and schema evolution requires a new reviewed migration. Masked database passwords use private input receipts plus live behavior checks; automatic resolve does not indiscriminately reset a rotated backend password.
 
 Boundary, OS rotation, MinIO, Ollama and LDAP admin remain in the legacy optional path and are not marked migrated or live-validated by this core lab release. Legacy scripts are retained pending the remaining portability/release gates. The original .env, recovery material and runtime are not adopted automatically.
 
-Validation containers were stopped after the checks; their named volumes and private recovery/evidence files were preserved. The obsolete preliminary generated license copy was removed. No commit, push or remote deployment was performed.
+The obsolete preliminary generated license copy was removed. No commit, push or remote deployment was performed.

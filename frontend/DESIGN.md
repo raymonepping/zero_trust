@@ -35,4 +35,4 @@ Classifications always use the same colours: public green, internal blue, confid
 
 ## Verification
 
-Screenshot each view at 1440×900 and 390×844, and run an axe WCAG 2.1 AA scan with 0 violations. Existing instances keep their built image, so check UI changes on a fresh `INSTANCE`, or run `build frontend` and recreate the service.
+Screenshot each view at 1440×900 and 390×844, and run an axe WCAG 2.1 AA scan with 0 violations. Existing instances keep their built image, so check UI changes after `make reset`, on a fresh `INSTANCE`, or with `build frontend` and a recreate of the service.

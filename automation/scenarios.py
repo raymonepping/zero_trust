@@ -46,7 +46,11 @@ class Scenario:
         with log.open("w") as handle:
             os.chmod(log, 0o600)
             process = subprocess.run(
-                argv, cwd=ROOT, stdout=handle, stderr=subprocess.STDOUT
+                argv,
+                cwd=ROOT,
+                stdin=subprocess.DEVNULL,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
             )
         if (process.returncode == 0) != success:
             raise WorkshopError(

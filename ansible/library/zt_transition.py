@@ -34,7 +34,7 @@ def main():
     desired = max(1, level - 1) if action == "prepare" else level
     if action in ["prepare", "resolve"] and high > desired:
         m.fail_json(
-            msg="Earlier state would remove existing security structure. Choose a fresh INSTANCE and PORT_BASE."
+            msg="Earlier state would remove existing security structure. Run make reset to start over, or choose a fresh INSTANCE and PORT_BASE."
         )
     path = build / "backend/connector.js"
     references = {
@@ -63,11 +63,11 @@ def main():
         desired = max(current, 1)
     if action == "prepare" and current >= level and level > 1:
         m.fail_json(
-            msg="This exercise is already solved or a later connector is active; verify it or use a fresh instance."
+            msg="This exercise is already solved or a later connector is active; verify it, run make reset to start over, or use a fresh instance."
         )
     if action == "resolve" and current > level:
         m.fail_json(
-            msg="Backward connector transitions are unsupported; choose a fresh instance."
+            msg="Backward connector transitions are unsupported; run make reset to start over, or choose a fresh instance."
         )
     if action == "resolve" and path.exists() and not known and not p["overwrite"]:
         m.fail_json(
