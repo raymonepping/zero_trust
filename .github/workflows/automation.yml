@@ -1,0 +1,26 @@
+name: Workshop automation
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.14.2'
+          terraform_wrapper: false
+      - run: make deps BOOTSTRAP_PYTHON=python
+      - run: make check
+  # Licensed live validation intentionally runs locally with explicit isolated
+  # INSTANCE/PORT_BASE settings; no license is needed for this static job.

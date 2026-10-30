@@ -1,0 +1,94 @@
+# Dedicated automation project. Generated secrets stay outside tracked sources.
+services:
+  db:
+    image: postgres:17.4
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+    ports: ['127.0.0.1:{{ zt_port_base + 32 }}:5432']
+    volumes: [db-data:/var/lib/postgresql/data]
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U appuser -d appdb']
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  openldap:
+    image: osixia/openldap:1.5.0
+    environment:
+      LDAP_ORGANISATION: MyOrg
+      LDAP_DOMAIN: my.org
+      LDAP_ADMIN_PASSWORD: admin
+      LDAP_TLS: 'false'
+    ports: ['127.0.0.1:{{ zt_port_base + 89 }}:389']
+    volumes: [ldap-data:/var/lib/ldap, ldap-config:/etc/ldap/slapd.d]
+    networks: [data]
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.1
+    command: ['start-dev', '--spi-ciba-auth-channel-ciba-http-auth-channel-http-authentication-channel-uri=http://backend:3000/ciba/request']
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports: ['127.0.0.1:{{ zt_port_base + 82 }}:8080']
+    volumes: [keycloak-data:/opt/keycloak/data]
+    networks: [data]
+  vault:
+    image: {{ "${VAULT_IMAGE}" if zt_vault_edition == "enterprise" else "hashicorp/vault:1.21.4" }}
+    command: ['vault', 'server', '-config=/vault/config/config.hcl']
+    environment:
+      SKIP_SETCAP: 'true'
+{% if zt_vault_edition == 'enterprise' %}
+      VAULT_LICENSE: '${VAULT_LICENSE:-}'
+{% endif %}
+    ports: ['127.0.0.1:{{ zt_port_base + 20 }}:8200']
+    volumes:
+      - vault-data:/vault/file
+      - '{{ zt_private }}/vault.hcl:/vault/config/config.hcl:ro'
+      - '{{ zt_private }}/audit:/vault/audit'
+    networks: [data]
+  vault-agent:
+    image: {{ "${VAULT_IMAGE}" if zt_vault_edition == "enterprise" else "hashicorp/vault:1.21.4" }}
+    user: '0:0'
+    entrypoint: ['vault', 'agent', '-config=/vault/config/agent.hcl']
+    environment:
+      SKIP_SETCAP: 'true'
+{% if zt_vault_edition == 'enterprise' %}
+      VAULT_LICENSE: '${VAULT_LICENSE:-}'
+{% endif %}
+    volumes:
+      - '{{ zt_private }}/agent:/vault/config:ro'
+      - agent-secrets:/vault/secrets
+    networks: [data]
+  backend:
+    build: '{{ zt_root }}/backend'
+    command: ['node', 'server.js']
+    env_file: ['{{ zt_private }}/backend.env']
+    ports: ['127.0.0.1:{{ zt_port_base }}:3000']
+    volumes:
+      - '{{ zt_build }}/backend:/app'
+      - backend-modules:/app/node_modules
+      - agent-secrets:/vault/secrets:ro
+    networks: [backend, data]
+  frontend:
+    build: '{{ zt_root }}/frontend'
+    environment:
+      VITE_API_URL: http://backend:3000
+      VITE_PORT: '5173'
+      VITE_HOST_PORT: '{{ zt_port_base + 88 }}'
+    ports: ['127.0.0.1:{{ zt_port_base + 88 }}:5173']
+    networks: [frontend, backend]
+networks:
+  frontend: {}
+  backend:
+    internal: true
+  data:
+    internal: true
+volumes:
+  db-data: {}
+  ldap-data: {}
+  ldap-config: {}
+  keycloak-data: {}
+  vault-data: {}
+  agent-secrets: {}
+  backend-modules: {}

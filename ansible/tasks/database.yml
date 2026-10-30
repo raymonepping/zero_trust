@@ -1,0 +1,13 @@
+---
+- name: Wait for database port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: '{{ zt_port_base + 32 }}'
+    timeout: 120
+
+- name: Apply transactional schema, preserve populated data, and reconcile grants
+  zt_database:
+    port: '{{ zt_port_base + 32 }}'
+    schema: '{{ zt_root }}/ansible/templates/schema.sql'
+    fixtures: '{{ zt_root }}/data/fixtures'
+    features: '{{ zt_features }}'

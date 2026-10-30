@@ -1,0 +1,110 @@
+[
+  {
+    "user_id": 1,
+    "title": "Vault token renewal intermittently fails",
+    "system": "vault",
+    "priority": "high",
+    "status": "open",
+    "opened_at": "2024-06-04",
+    "classification": "internal"
+  },
+  {
+    "user_id": 1,
+    "title": "Production admin access review for finance namespace",
+    "system": "iam",
+    "priority": "critical",
+    "status": "in_progress",
+    "opened_at": "2024-06-18",
+    "classification": "restricted"
+  },
+  {
+    "user_id": 2,
+    "title": "Support team cannot read confidential preferences",
+    "system": "backend-api",
+    "priority": "medium",
+    "status": "open",
+    "opened_at": "2024-05-13",
+    "classification": "internal"
+  },
+  {
+    "user_id": 2,
+    "title": "OIDC login flow returns stale role claims",
+    "system": "keycloak",
+    "priority": "high",
+    "status": "resolved",
+    "opened_at": "2024-06-02",
+    "classification": "internal"
+  },
+  {
+    "user_id": 3,
+    "title": "Viewer dashboard card loads slowly on mobile",
+    "system": "frontend",
+    "priority": "low",
+    "status": "open",
+    "opened_at": "2024-04-09",
+    "classification": "public"
+  },
+  {
+    "user_id": 3,
+    "title": "Restricted content should be hidden from viewer role",
+    "system": "frontend",
+    "priority": "medium",
+    "status": "resolved",
+    "opened_at": "2024-05-21",
+    "classification": "internal"
+  },
+  {
+    "user_id": 4,
+    "title": "LLM endpoint timed out during data summarization",
+    "system": "ollama",
+    "priority": "medium",
+    "status": "open",
+    "opened_at": "2024-06-07",
+    "classification": "internal"
+  },
+  {
+    "user_id": 4,
+    "title": "Confidential project notes exposed in generated answer",
+    "system": "ask-api",
+    "priority": "critical",
+    "status": "investigating",
+    "opened_at": "2024-06-20",
+    "classification": "confidential"
+  },
+  {
+    "user_id": 5,
+    "title": "Platform role rotation skipped after database restart",
+    "system": "postgres",
+    "priority": "high",
+    "status": "open",
+    "opened_at": "2024-05-30",
+    "classification": "internal"
+  },
+  {
+    "user_id": 5,
+    "title": "Enterprise license audit requested by procurement",
+    "system": "licensing",
+    "priority": "medium",
+    "status": "pending",
+    "opened_at": "2024-06-12",
+    "classification": "confidential"
+  },
+  {
+    "user_id": 6,
+    "title": "Support escalation cannot rotate lease on demand",
+    "system": "vault",
+    "priority": "high",
+    "status": "resolved",
+    "opened_at": "2024-06-10",
+    "classification": "internal"
+  },
+  {
+    "user_id": 6,
+    "title": "Restricted customer panel access review",
+    "system": "support-console",
+    "priority": "high",
+    "status": "open",
+    "opened_at": "2024-06-22",
+    "classification": "restricted"
+  }
+]

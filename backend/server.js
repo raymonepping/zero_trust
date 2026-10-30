@@ -43,12 +43,21 @@ const TRUST_LEVELS = {
   "env-file":              0,
   "vault-kv":              1,
   "vault-dynamic":         1,
+  "vault-agent-dynamic":   2,
   "vault-approle":         2,
   "vault-approle-dynamic": 2,
   "vault-jwt-dynamic":     3,
 };
 
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted"];
+
+// Role ceiling, mirroring the orders row-level security policies. Tables without
+// RLS rely on this filter. Roles not listed here are limited by trust level only.
+const ROLE_CLASSIFICATIONS = {
+  "viewer-read":   ["public"],
+  "support-read":  ["public", "internal"],
+  "support-write": ["public", "internal"],
+};
 
 const RENEWAL_THRESHOLD = 0.75;
 
@@ -73,17 +82,24 @@ const connectorGetLeaseInfo = typeof connector.getLeaseInfo === "function"
   ? () => connector.getLeaseInfo()
   : () => null;
 
-function getAllowedClassifications(source) {
+function getTrustClassifications(source) {
   const level = TRUST_LEVELS[source] ?? 0;
   return CLASSIFICATIONS.slice(0, level + 1);
 }
 
-async function getActiveSource(userContext) {
+function getAllowedClassifications(source, vaultRole) {
+  const ceiling = ROLE_CLASSIFICATIONS[vaultRole];
+  const allowed = getTrustClassifications(source);
+  return ceiling ? allowed.filter((c) => ceiling.includes(c)) : allowed;
+}
+
+async function getActiveAccess(userContext) {
   try {
-    const creds = await connector.getCredentials(userContext);
-    return creds.source || "static-config";
+    const creds  = await connector.getCredentials(userContext);
+    const source = creds.source || "static-config";
+    return { source, allowed: getAllowedClassifications(source, creds.vaultRole) };
   } catch {
-    return "static-config";
+    return { source: "static-config", allowed: getAllowedClassifications("static-config") };
   }
 }
 
@@ -211,12 +227,14 @@ app.get("/orders", authenticateOptional, async (req, res) => {
     const uc = req.userContext
       ? { ...req.userContext, role: resolveVaultRole(req.user) }
       : { role: "viewer-read" };
+    const { allowed } = await getActiveAccess(uc);
 
     const { rows } = await poolManager.query(
       `SELECT o.id, u.first_name, u.last_name, o.item, o.category,
               o.quantity, o.price, o.ordered_at, o.status, o.classification
        FROM orders o
        JOIN users u ON u.id = o.user_id
+       WHERE o.classification IN (${sqlInList(allowed)})
        ORDER BY o.ordered_at DESC`,
       [],
       uc,
@@ -234,8 +252,7 @@ app.get("/preferences", authenticateOptional, async (req, res) => {
     const uc = req.userContext
       ? { ...req.userContext, role: resolveVaultRole(req.user) }
       : { role: "viewer-read" };
-    const source  = await getActiveSource(uc);
-    const allowed = getAllowedClassifications(source);
+    const { source, allowed } = await getActiveAccess(uc);
     const { rows } = await poolManager.query(
       `SELECT p.id, u.first_name, u.last_name, p.category, p.value, p.classification
        FROM preferences p
@@ -257,8 +274,7 @@ app.get("/training", authenticateOptional, async (req, res) => {
     const uc = req.userContext
       ? { ...req.userContext, role: resolveVaultRole(req.user) }
       : { role: "viewer-read" };
-    const source  = await getActiveSource(uc);
-    const allowed = getAllowedClassifications(source);
+    const { source, allowed } = await getActiveAccess(uc);
     const { rows } = await poolManager.query(
       `SELECT t.id, u.first_name, u.last_name, t.course, t.provider,
               t.completed_at, t.score, t.certified, t.classification
@@ -282,8 +298,7 @@ app.get("/tickets", authenticateOptional, async (req, res) => {
     const uc = req.userContext
       ? { ...req.userContext, role: resolveVaultRole(req.user) }
       : { role: "viewer-read" };
-    const source  = await getActiveSource(uc);
-    const allowed = getAllowedClassifications(source);
+    const { source, allowed } = await getActiveAccess(uc);
     const { rows } = await poolManager.query(
       `SELECT t.id, u.first_name, u.last_name, t.title, t.system,
               t.priority, t.status, t.opened_at, t.classification
@@ -307,8 +322,7 @@ app.get("/projects", authenticateOptional, async (req, res) => {
     const uc = req.userContext
       ? { ...req.userContext, role: resolveVaultRole(req.user) }
       : { role: "viewer-read" };
-    const source  = await getActiveSource(uc);
-    const allowed = getAllowedClassifications(source);
+    const { source, allowed } = await getActiveAccess(uc);
     const { rows } = await poolManager.query(
       `SELECT p.id, u.first_name, u.last_name, p.project_name, p.role,
               p.budget, p.start_date, p.status, p.classification
@@ -337,7 +351,7 @@ app.get("/credentials", authenticateOptional, async (req, res) => {
       : undefined;
     const creds   = await connector.getCredentials(uc);
     const status  = poolManager.getStatus();
-    const allowed = getAllowedClassifications(creds.source);
+    const allowed = getAllowedClassifications(creds.source, creds.vaultRole);
     const level   = TRUST_LEVELS[creds.source] ?? 0;
 
     res.json({
@@ -358,6 +372,7 @@ app.get("/credentials", authenticateOptional, async (req, res) => {
       issuedFor:               creds.issuedFor || null,
       trust_level:             level,
       allowed_classifications: allowed,
+      trust_classifications:   getTrustClassifications(creds.source),
       requestedBy:             uc || null,
       pools:                   status.pools,
       leases:                  status.leases,
@@ -490,8 +505,7 @@ app.post("/ask", authenticateOptional, async (req, res) => {
     : { role: "viewer-read" };
 
   try {
-    const source  = await getActiveSource(uc);
-    const allowed = getAllowedClassifications(source);
+    const { source, allowed } = await getActiveAccess(uc);
     const inList  = sqlInList(allowed);
     const datasets = selectAskDatasets(question);
 

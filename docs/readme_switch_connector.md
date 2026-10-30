@@ -1,3 +1,5 @@
+> For the Make/Ansible/Terraform workflow, use the [automation guide](automation/usage.md). This document describes the legacy script path and original Compose environment; keep that path separate from automation instances.
+
 # switch_connector.sh — Connector Swap Script
 
 **Location:** `scripts/switch_connector.sh`

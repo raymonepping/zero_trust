@@ -29,3 +29,7 @@ docs: improve README
 ## Code review
 
 All pull requests require at least one approval before merging.
+
+## Workshop automation
+
+Run `make deps` with Python 3.14, then `make check`. Static checks do not need a license or running containers. Live tests require an explicit runtime and a dedicated `validation-*` instance; use `automation/live.py` and record actual results in `docs/automation/validation.md`. Never commit `.env`, `.secrets`, `.build`, plans/state or rendered credential files. Update the executable lab manifest, student instructions and ownership table together when changing a lab.

@@ -2,3 +2,5 @@ node_modules
 dist
 npm-debug.log
 .git
+._*
+.DS_Store

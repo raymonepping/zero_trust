@@ -170,3 +170,15 @@ input/*
 !input/.gitkeep
 output/*
 !output/.gitkeep
+
+# Workshop automation: local outputs, identities and protected runtime sources
+.build/
+.secrets/
+.cache/
+!.terraform.lock.hcl
+/prompts/
+
+# Local design tooling, same as the reference projects
+.agents/
+.claude/
+.impeccable/

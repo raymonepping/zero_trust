@@ -1,0 +1,93 @@
+---
+- name: Load private runtime environment inputs
+  ansible.builtin.set_fact:
+    zt_runtime_identity: '{{ (lookup("file", zt_private + "/runtime.json") | from_json) if "kv" in zt_features else {} }}'
+    zt_kc_identity: '{{ lookup("file", zt_private + "/keycloak.json") | from_json }}'
+    zt_selected: '{{ zt_manifest.labs[(zt_level | int) - 1] }}'
+  no_log: true
+- name: Preserve learner changes before explicit replacement
+  zt_connector:
+    root: '{{ zt_root }}'
+    build: '{{ zt_build }}'
+    private: '{{ zt_private }}'
+    connector: '{{ zt_selected.connector }}'
+    overwrite: '{{ zt_overwrite }}'
+  register: connector_deploy
+- name: Render runtime environment
+  ansible.builtin.template:
+    src: backend.env.j2
+    dest: '{{ zt_private }}/backend.env'
+    mode: '0600'
+  no_log: true
+  diff: false
+  register: backend_environment
+- name: Deliver Agent inputs only for the Agent exercise
+  when: '"agent" in zt_features'
+  block:
+    - name: Deliver Agent configuration
+      ansible.builtin.copy:
+        src: '{{ zt_root }}/vault-agent/config/agent.hcl'
+        dest: '{{ zt_private }}/agent/agent.hcl'
+        mode: '0600'
+      register: agent_config
+    - name: Deliver private Agent role ID and secret ID
+      ansible.builtin.copy:
+        content: '{{ item.value }}'
+        dest: '{{ zt_private }}/agent/{{ item.name }}'
+        mode: '0600'
+      loop:
+        - {name: role_id, value: '{{ zt_runtime_identity.role_id }}'}
+        - {name: secret_id, value: '{{ zt_runtime_identity.secret_id }}'}
+      no_log: true
+      diff: false
+      register: agent_identity
+    - name: Start Agent after configuration and identity delivery
+      zt_compose:
+        argv: '{{ zt_compose }}'
+        file: '{{ zt_private }}/compose.yml'
+        project: '{{ zt_project }}'
+        services: [vault-agent]
+        operation: up
+        recreate: '{{ agent_config.changed or agent_identity.changed }}'
+    - name: Wait for Agent file before starting backend
+      ansible.builtin.command:
+        argv: >-
+          {{ zt_compose + ["-f", zt_private + "/compose.yml", "-p", zt_project,
+          "exec", "-T", "vault-agent", "test", "-s", "/vault/secrets/db-creds.json"] }}
+      register: agent_ready
+      until: agent_ready.rc == 0
+      retries: 60
+      delay: 2
+      changed_when: false
+- name: Stop Agent when its credentials are no longer the selected strategy
+  zt_compose:
+    argv: '{{ zt_compose }}'
+    file: '{{ zt_private }}/compose.yml'
+    project: '{{ zt_project }}'
+    services: [vault-agent]
+    operation: stop
+  when: '"agent" not in zt_features'
+- name: Start backend and recreate only when runtime inputs changed
+  zt_compose:
+    argv: '{{ zt_compose }}'
+    file: '{{ zt_private }}/compose.yml'
+    project: '{{ zt_project }}'
+    services: [backend]
+    operation: up
+    recreate: '{{ connector_deploy.changed or backend_environment.changed or backend_sources.changed }}'
+- name: Wait for application health and real DB connectivity
+  ansible.builtin.uri:
+    url: 'http://127.0.0.1:{{ zt_port_base }}/health'
+    status_code: 200
+    timeout: 3
+  register: backend_health
+  until: backend_health.status | default(0) == 200
+  retries: 30
+  delay: 2
+- name: Start frontend
+  zt_compose:
+    argv: '{{ zt_compose }}'
+    file: '{{ zt_private }}/compose.yml'
+    project: '{{ zt_project }}'
+    services: [frontend]
+    operation: up

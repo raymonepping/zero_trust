@@ -1,0 +1,6 @@
+---
+- name: Initialize and unseal with scoped automation custody
+  zt_bootstrap:
+    address: 'http://127.0.0.1:{{ zt_port_base + 20 }}'
+    private: '{{ zt_private }}'
+    unseal_only: '{{ zt_action == "unseal" }}'

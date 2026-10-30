@@ -1,0 +1,52 @@
+---
+- name: Create private workspace directories
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: directory
+    mode: '0700'
+  loop:
+    - '{{ zt_build }}/backend'
+    - '{{ zt_private }}/agent'
+    - '{{ zt_private }}/audit'
+    - '{{ zt_private }}/tokens'
+    - '{{ zt_private }}/terraform'
+
+- name: Stage backend support files without replacing learner connector
+  ansible.builtin.copy:
+    src: '{{ item }}'
+    dest: '{{ zt_build }}/backend/{{ item | basename }}'
+    mode: '0600'
+  loop: "{{ query('fileglob', zt_root + '/backend/*.js') + query('fileglob', zt_root + '/backend/*.json') }}"
+  when: item | basename != 'connector.js'
+  register: backend_sources
+
+- name: Establish initial wired exercise file without overwriting it
+  ansible.builtin.copy:
+    src: '{{ zt_root }}/data/connector.wired.js'
+    dest: '{{ zt_build }}/backend/connector.js'
+    force: false
+    mode: '0600'
+
+- name: Generate isolated Compose definition
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: '{{ zt_private }}/compose.yml'
+    mode: '0600'
+
+- name: Use controlled controller endpoints
+  ansible.builtin.set_fact:
+    zt_vault_addr: 'http://127.0.0.1:{{ zt_port_base + 20 }}'
+    zt_keycloak_addr: 'http://127.0.0.1:{{ zt_port_base + 82 }}'
+
+- name: Render Vault config for the selected edition
+  ansible.builtin.template:
+    src: vault.hcl.j2
+    dest: '{{ zt_private }}/vault.hcl'
+    mode: '0600'
+
+- name: Establish an empty environment file until backend configuration is ready
+  ansible.builtin.copy:
+    dest: '{{ zt_private }}/backend.env'
+    content: ''
+    force: false
+    mode: '0600'

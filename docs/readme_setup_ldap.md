@@ -1,3 +1,5 @@
+> For the Make/Ansible/Terraform workflow, use the [automation guide](automation/usage.md). This document describes the legacy script path and original Compose environment; keep that path separate from automation instances.
+
 # setup_ldap.sh — LDAP Bootstrap Script
 
 **Location:** `scripts/setup_ldap.sh`

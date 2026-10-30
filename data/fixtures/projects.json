@@ -1,0 +1,110 @@
+[
+  {
+    "user_id": 1,
+    "project_name": "Vault Migration Wave 2",
+    "role": "Principal Engineer",
+    "budget": 185000,
+    "start_date": "2024-01-15",
+    "status": "active",
+    "classification": "confidential"
+  },
+  {
+    "user_id": 1,
+    "project_name": "Privileged Identity Breakglass Redesign",
+    "role": "Technical Lead",
+    "budget": 240000,
+    "start_date": "2024-04-03",
+    "status": "active",
+    "classification": "restricted"
+  },
+  {
+    "user_id": 2,
+    "project_name": "Support Access Workflow Hardening",
+    "role": "Staff Engineer",
+    "budget": 98000,
+    "start_date": "2024-02-01",
+    "status": "active",
+    "classification": "internal"
+  },
+  {
+    "user_id": 2,
+    "project_name": "Secrets Rotation Runbook Automation",
+    "role": "Implementation Lead",
+    "budget": 76000,
+    "start_date": "2024-03-12",
+    "status": "planning",
+    "classification": "internal"
+  },
+  {
+    "user_id": 3,
+    "project_name": "Role-Aware Dashboard Refresh",
+    "role": "Frontend Engineer",
+    "budget": 42000,
+    "start_date": "2024-01-22",
+    "status": "active",
+    "classification": "public"
+  },
+  {
+    "user_id": 3,
+    "project_name": "Restricted UX Pattern Review",
+    "role": "Design Reviewer",
+    "budget": 28000,
+    "start_date": "2024-05-06",
+    "status": "completed",
+    "classification": "internal"
+  },
+  {
+    "user_id": 4,
+    "project_name": "AI Knowledge Assistant Pilot",
+    "role": "Data Engineer",
+    "budget": 132000,
+    "start_date": "2024-02-19",
+    "status": "active",
+    "classification": "internal"
+  },
+  {
+    "user_id": 4,
+    "project_name": "Confidential Model Evaluation Track",
+    "role": "Analytics Lead",
+    "budget": 168000,
+    "start_date": "2024-04-25",
+    "status": "active",
+    "classification": "confidential"
+  },
+  {
+    "user_id": 5,
+    "project_name": "Platform Bootstrap Standardization",
+    "role": "Platform Engineer",
+    "budget": 87000,
+    "start_date": "2024-01-29",
+    "status": "active",
+    "classification": "internal"
+  },
+  {
+    "user_id": 5,
+    "project_name": "Enterprise License Governance",
+    "role": "Systems Owner",
+    "budget": 210000,
+    "start_date": "2024-05-14",
+    "status": "planning",
+    "classification": "restricted"
+  },
+  {
+    "user_id": 6,
+    "project_name": "Support Console Modernization",
+    "role": "Support Engineer",
+    "budget": 64000,
+    "start_date": "2024-02-27",
+    "status": "active",
+    "classification": "internal"
+  },
+  {
+    "user_id": 6,
+    "project_name": "Identity Operations Metrics Rollout",
+    "role": "Operations Lead",
+    "budget": 54000,
+    "start_date": "2024-06-03",
+    "status": "planning",
+    "classification": "public"
+  }
+]

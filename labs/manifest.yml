@@ -1,0 +1,437 @@
+{
+  "schema_version": 1,
+  "labs": [
+    {
+      "id": "01",
+      "connector": "wired",
+      "title": "Inspect hardcoded database credentials",
+      "requires": [],
+      "prepare_from": null,
+      "features": [],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend"
+      ],
+      "start": "Baseline source inspection",
+      "completed": "wired connector passes behavioral probes",
+      "student_task": "Inspect hardcoded database credentials",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users"
+      ],
+      "source": "static-config"
+    },
+    {
+      "id": "02",
+      "connector": "env",
+      "title": "Move database credentials into environment configuration",
+      "requires": [
+        "01"
+      ],
+      "prepare_from": "01",
+      "features": [],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend"
+      ],
+      "start": "Completed lab 01; current exercise remains unsolved",
+      "completed": "env connector passes behavioral probes",
+      "student_task": "Move database credentials into environment configuration",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users"
+      ],
+      "source": "env-file"
+    },
+    {
+      "id": "03",
+      "connector": "vault",
+      "title": "Read static credentials from Vault KV v2",
+      "requires": [
+        "02"
+      ],
+      "prepare_from": "02",
+      "features": [
+        "kv"
+      ],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend",
+        "vault"
+      ],
+      "start": "Completed lab 02; current exercise remains unsolved",
+      "completed": "vault connector passes behavioral probes",
+      "student_task": "Read static credentials from Vault KV v2",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "bootstrap",
+        "terraform",
+        "vault_configuration",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users"
+      ],
+      "source": "vault-kv"
+    },
+    {
+      "id": "04",
+      "connector": "lab-approle",
+      "title": "Authenticate a machine through scoped AppRole",
+      "requires": [
+        "03"
+      ],
+      "prepare_from": "03",
+      "features": [
+        "kv",
+        "approle"
+      ],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend",
+        "vault"
+      ],
+      "start": "Completed lab 03; current exercise remains unsolved",
+      "completed": "approle connector passes behavioral probes",
+      "student_task": "Authenticate a machine through scoped AppRole",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "bootstrap",
+        "terraform",
+        "vault_configuration",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users",
+        "scope"
+      ],
+      "source": "vault-approle"
+    },
+    {
+      "id": "05",
+      "connector": "approle-dynamic",
+      "title": "Issue short-lived database credentials",
+      "requires": [
+        "04"
+      ],
+      "prepare_from": "04",
+      "features": [
+        "kv",
+        "approle",
+        "database"
+      ],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend",
+        "vault"
+      ],
+      "start": "Completed lab 04; current exercise remains unsolved",
+      "completed": "approle-dynamic connector passes behavioral probes",
+      "student_task": "Issue short-lived database credentials",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "bootstrap",
+        "terraform",
+        "vault_configuration",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users",
+        "scope",
+        "dynamic_login"
+      ],
+      "source": "vault-approle-dynamic"
+    },
+    {
+      "id": "06",
+      "connector": "approle-rotation",
+      "title": "Reissue credentials proactively before expiry",
+      "requires": [
+        "05"
+      ],
+      "prepare_from": "05",
+      "features": [
+        "kv",
+        "approle",
+        "database"
+      ],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend",
+        "vault"
+      ],
+      "start": "Completed lab 05; current exercise remains unsolved",
+      "completed": "approle-rotation connector passes behavioral probes",
+      "student_task": "Reissue credentials proactively before expiry",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "bootstrap",
+        "terraform",
+        "vault_configuration",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users",
+        "scope",
+        "dynamic_login",
+        "rotation"
+      ],
+      "source": "vault-approle-dynamic"
+    },
+    {
+      "id": "07",
+      "connector": "lab-agent-dynamic",
+      "title": "Consume credentials rendered by Vault Agent",
+      "requires": [
+        "06"
+      ],
+      "prepare_from": "06",
+      "features": [
+        "kv",
+        "approle",
+        "database",
+        "agent"
+      ],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend",
+        "vault",
+        "vault-agent"
+      ],
+      "start": "Completed lab 06; current exercise remains unsolved",
+      "completed": "agent-dynamic connector passes behavioral probes",
+      "student_task": "Consume credentials rendered by Vault Agent",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "bootstrap",
+        "terraform",
+        "vault_configuration",
+        "agent",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users",
+        "scope",
+        "dynamic_login",
+        "agent_file"
+      ],
+      "source": "vault-agent-dynamic"
+    },
+    {
+      "id": "08",
+      "connector": "jwt-rotation",
+      "title": "Exchange a backend identity JWT with Vault",
+      "requires": [
+        "07"
+      ],
+      "prepare_from": "07",
+      "features": [
+        "kv",
+        "approle",
+        "database",
+        "jwt"
+      ],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend",
+        "vault"
+      ],
+      "start": "Completed lab 07; current exercise remains unsolved",
+      "completed": "jwt-rotation connector passes behavioral probes",
+      "student_task": "Exchange a backend identity JWT with Vault",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "bootstrap",
+        "terraform",
+        "vault_configuration",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users",
+        "scope",
+        "dynamic_login",
+        "rotation",
+        "jwt_rejection"
+      ],
+      "source": "vault-jwt-dynamic"
+    },
+    {
+      "id": "09",
+      "connector": "jwt-roles",
+      "title": "Select least-privilege database roles for authenticated callers",
+      "requires": [
+        "08"
+      ],
+      "prepare_from": "08",
+      "features": [
+        "kv",
+        "approle",
+        "database",
+        "jwt",
+        "roles"
+      ],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend",
+        "vault"
+      ],
+      "start": "Completed lab 08; current exercise remains unsolved",
+      "completed": "jwt-roles connector passes behavioral probes",
+      "student_task": "Select least-privilege database roles for authenticated callers",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "bootstrap",
+        "terraform",
+        "vault_configuration",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users",
+        "scope",
+        "dynamic_login",
+        "rotation",
+        "jwt_rejection",
+        "role_isolation"
+      ],
+      "source": "vault-jwt-dynamic"
+    },
+    {
+      "id": "10",
+      "connector": "jwt-ciba",
+      "title": "Require explicit approval for narrow write access",
+      "requires": [
+        "09"
+      ],
+      "prepare_from": "09",
+      "features": [
+        "kv",
+        "approle",
+        "database",
+        "jwt",
+        "roles",
+        "ciba"
+      ],
+      "services": [
+        "db",
+        "openldap",
+        "keycloak",
+        "backend",
+        "frontend",
+        "vault"
+      ],
+      "start": "Completed lab 09; current exercise remains unsolved",
+      "completed": "jwt-ciba connector passes behavioral probes",
+      "student_task": "Require explicit approval for narrow write access",
+      "resolution": [
+        "runtime",
+        "database",
+        "identity",
+        "bootstrap",
+        "terraform",
+        "vault_configuration",
+        "connector",
+        "verify"
+      ],
+      "probes": [
+        "health",
+        "credentials",
+        "users",
+        "scope",
+        "dynamic_login",
+        "rotation",
+        "jwt_rejection",
+        "role_isolation",
+        "ciba"
+      ],
+      "source": "vault-jwt-dynamic"
+    }
+  ],
+  "optional_connectors": {
+    "dynamic": {
+      "file": "data/connector.dynamic.js",
+      "features": [
+        "kv",
+        "database"
+      ],
+      "note": "Legacy optional example; not a numbered lab or supported automated transition."
+    }
+  }
+}

@@ -1,3 +1,7 @@
+# Automation entrypoint
+
+Use the [automation guide](docs/automation/usage.md), [lab exercises](labs/README.md), [design](docs/automation/design.md) and [validation report](docs/automation/validation.md) for the Make/Ansible/Terraform path. Existing script documentation below describes the legacy Compose path.
+
 # Workshop Docs Index
 
 This file is the documentation map for the Zero Trust Workshop. The root [README.md](./README.md) is the guided lab entry point. This index links to the deeper script and subsystem documents in `./docs`.

@@ -1,0 +1,114 @@
+---
+- name: Converge the selected workshop exercise
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Inspect transition before any configuration changes
+      zt_transition:
+        root: '{{ zt_root }}'
+        build: '{{ zt_build }}'
+        private: '{{ zt_private }}'
+        action: '{{ zt_action }}'
+        lab: '{{ zt_lab }}'
+        overwrite: '{{ zt_overwrite }}'
+      register: transition
+
+    - name: Establish effective lab
+      ansible.builtin.set_fact:
+        zt_level: '{{ transition.level }}'
+        zt_skip_prepare: '{{ transition.skip_prepare }}'
+
+    - name: Read the selected manifest contract
+      ansible.builtin.set_fact:
+        zt_selected: '{{ zt_manifest.labs[(zt_level | int) - 1] }}'
+        zt_features: '{{ zt_manifest.labs[(zt_level | int) - 1].features }}'
+
+    - name: Perform supported lifecycle operation
+      when: zt_action in ['up', 'prepare', 'resolve'] and not zt_skip_prepare
+      block:
+        - name: Prepare private runtime workspace
+          ansible.builtin.import_tasks: tasks/workspace.yml
+        - name: Start database and identity prerequisites
+          zt_compose:
+            argv: '{{ zt_compose }}'
+            file: '{{ zt_private }}/compose.yml'
+            project: '{{ zt_project }}'
+            services: '{{ zt_selected.services | select("in", ["db", "openldap", "keycloak"]) | list }}'
+            operation: up
+        - name: Configure database
+          ansible.builtin.import_tasks: tasks/database.yml
+        - name: Configure identity
+          ansible.builtin.import_tasks: tasks/identity.yml
+        - name: Configure Vault stages
+          when: '"kv" in zt_features'
+          block:
+            - name: Require a license for Enterprise Vault
+              zt_license:
+                root: '{{ zt_root }}'
+              when: zt_vault_edition == 'enterprise'
+            - name: Start Vault
+              zt_compose:
+                argv: '{{ zt_compose }}'
+                file: '{{ zt_private }}/compose.yml'
+                project: '{{ zt_project }}'
+                services: [vault]
+                operation: up
+            - name: Bootstrap scoped automation identities
+              ansible.builtin.import_tasks: tasks/bootstrap.yml
+            - name: Apply Terraform-owned structure
+              ansible.builtin.command:
+                argv:
+                  - '{{ ansible_playbook_python }}'
+                  - '{{ zt_root }}/automation/terraform_run.py'
+                  - '{{ zt_private }}/run.json'
+                  - apply
+                  - '{{ zt_level | string }}'
+              register: tf_apply
+              changed_when: '"structure_changed=true" in tf_apply.stdout'
+            - name: Reconcile Vault operational configuration
+              ansible.builtin.import_tasks: tasks/vault.yml
+        - name: Deploy selected connector and environment
+          ansible.builtin.import_tasks: tasks/connector.yml
+        - name: Record preparation boundary
+          ansible.builtin.copy:
+            dest: '{{ zt_build }}/prepared.json'
+            content: '{{ {"lab": zt_lab, "level": zt_level, "digest": zt_digest} | to_nice_json }}'
+            mode: '0600'
+          when: zt_action == 'prepare'
+
+    - name: Explain preserved exercise
+      ansible.builtin.debug:
+        msg: Preparation was already performed; learner files and current configuration were preserved.
+      when: zt_skip_prepare
+
+    - name: Stop only automation project services, preserving volumes
+      zt_compose:
+        argv: '{{ zt_compose }}'
+        file: '{{ zt_private }}/compose.yml'
+        project: '{{ zt_project }}'
+        services: []
+        operation: stop
+      when: zt_action == 'down'
+
+    - name: Unseal existing instance without reinitialization
+      ansible.builtin.import_tasks: tasks/bootstrap.yml
+      when: zt_action == 'unseal'
+
+    - name: Prepare only runtime and custody for manual Vault exercises
+      when: zt_action == 'bootstrap'
+      block:
+        - name: Prepare private bootstrap files
+          ansible.builtin.import_tasks: tasks/workspace.yml
+        - name: Require license for manual Enterprise bootstrap
+          zt_license:
+            root: '{{ zt_root }}'
+          when: zt_vault_edition == 'enterprise'
+        - name: Start Vault for manual configuration
+          zt_compose:
+            argv: '{{ zt_compose }}'
+            file: '{{ zt_private }}/compose.yml'
+            project: '{{ zt_project }}'
+            services: [vault]
+            operation: up
+        - name: Establish bootstrap custody without application structure
+          ansible.builtin.import_tasks: tasks/bootstrap.yml

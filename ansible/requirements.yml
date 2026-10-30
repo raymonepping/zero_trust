@@ -1,0 +1,3 @@
+# Only ansible.builtin and project modules are used. Project modules keep the
+# transactional/custody logic explicit and support both Compose providers.
+collections: []

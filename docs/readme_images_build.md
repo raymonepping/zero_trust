@@ -53,6 +53,12 @@ The script keeps those steps aligned.
 
 ---
 
+## Hosts without docker buildx
+
+The script needs `docker buildx` for its multi-platform build. On a Podman-only host, use `podman build --platform linux/amd64,linux/arm64 --manifest <image> <context>` and `podman manifest push --all <image> docker://<image>`, then update the tags in `docker-compose.yml`.
+
+---
+
 ## Usage
 
 ### Default usage

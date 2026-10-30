@@ -1,0 +1,137 @@
+[
+  {
+    "user_id": 1,
+    "course": "Zero Trust Architecture Fundamentals",
+    "provider": "HashiCorp Academy",
+    "completed_at": "2024-01-18",
+    "score": 96,
+    "certified": true,
+    "classification": "public"
+  },
+  {
+    "user_id": 1,
+    "course": "Vault Policy Design Workshop",
+    "provider": "Internal Security Enablement",
+    "completed_at": "2024-03-12",
+    "score": 94,
+    "certified": true,
+    "classification": "internal"
+  },
+  {
+    "user_id": 1,
+    "course": "Privileged Access Incident Response",
+    "provider": "Red Team Lab",
+    "completed_at": "2024-05-21",
+    "score": 91,
+    "certified": false,
+    "classification": "restricted"
+  },
+  {
+    "user_id": 2,
+    "course": "Identity Federation with OIDC",
+    "provider": "Cloud Native Academy",
+    "completed_at": "2024-02-07",
+    "score": 88,
+    "certified": true,
+    "classification": "public"
+  },
+  {
+    "user_id": 2,
+    "course": "Kubernetes Secrets Hardening",
+    "provider": "Internal Platform Guild",
+    "completed_at": "2024-04-09",
+    "score": 90,
+    "certified": false,
+    "classification": "internal"
+  },
+  {
+    "user_id": 2,
+    "course": "Operational Secrets Escalation Drills",
+    "provider": "Security Operations",
+    "completed_at": "2024-06-03",
+    "score": 86,
+    "certified": false,
+    "classification": "restricted"
+  },
+  {
+    "user_id": 3,
+    "course": "Secure Frontend Authentication Patterns",
+    "provider": "Frontend Guild",
+    "completed_at": "2024-01-30",
+    "score": 92,
+    "certified": true,
+    "classification": "public"
+  },
+  {
+    "user_id": 3,
+    "course": "Phishing Resistance Simulation",
+    "provider": "Awareness Team",
+    "completed_at": "2024-03-18",
+    "score": 84,
+    "certified": false,
+    "classification": "internal"
+  },
+  {
+    "user_id": 4,
+    "course": "MLOps Data Handling and Privacy",
+    "provider": "AI Enablement Office",
+    "completed_at": "2024-02-14",
+    "score": 89,
+    "certified": true,
+    "classification": "public"
+  },
+  {
+    "user_id": 4,
+    "course": "Confidential Dataset Access Controls",
+    "provider": "Data Governance Board",
+    "completed_at": "2024-04-27",
+    "score": 87,
+    "certified": false,
+    "classification": "confidential"
+  },
+  {
+    "user_id": 5,
+    "course": "Terraform State Security",
+    "provider": "HashiCorp Academy",
+    "completed_at": "2024-03-05",
+    "score": 93,
+    "certified": true,
+    "classification": "public"
+  },
+  {
+    "user_id": 5,
+    "course": "Platform Access Boundary Reviews",
+    "provider": "Internal Platform Guild",
+    "completed_at": "2024-05-09",
+    "score": 85,
+    "certified": false,
+    "classification": "internal"
+  },
+  {
+    "user_id": 6,
+    "course": "Support Access Triage with Vault",
+    "provider": "Support Engineering Academy",
+    "completed_at": "2024-02-22",
+    "score": 91,
+    "certified": true,
+    "classification": "public"
+  },
+  {
+    "user_id": 6,
+    "course": "Identity Lifecycle Operations",
+    "provider": "Internal IAM Team",
+    "completed_at": "2024-04-16",
+    "score": 88,
+    "certified": true,
+    "classification": "internal"
+  },
+  {
+    "user_id": 6,
+    "course": "Privileged Support Escalation Handling",
+    "provider": "Security Operations",
+    "completed_at": "2024-06-11",
+    "score": 83,
+    "certified": false,
+    "classification": "restricted"
+  }
+]

@@ -1,0 +1,104 @@
+---
+- name: Load and validate non-secret Terraform output contract
+  ansible.builtin.set_fact:
+    zt_contract: '{{ lookup("file", zt_build + "/terraform.json") | from_json }}'
+- name: Require matching structure handoff
+  ansible.builtin.assert:
+    that:
+      - zt_contract.schema_version == 1
+      - zt_contract.level | int == zt_level | int
+      - "'secret' in zt_contract.mounts"
+- name: Reconcile static KV secret using compare and CAS
+  zt_vault:
+    address: '{{ zt_vault_addr }}'
+    private: '{{ zt_private }}'
+    path: secret/data/postgres
+    kind: kv
+    desired:
+      username: appuser
+      password: apppassword
+      host: db
+      port: 5432
+      database: appdb
+- name: Reconcile AppRole configuration
+  zt_vault:
+    address: '{{ zt_vault_addr }}'
+    private: '{{ zt_private }}'
+    path: auth/approle/role/zero-trust-app
+    desired:
+      token_policies: [app-policy]
+      token_ttl: 3600
+      token_max_ttl: 14400
+      secret_id_ttl: 86400
+      secret_id_num_uses: 0
+  when: '"approle" in zt_features'
+- name: Reconcile database connection
+  zt_vault:
+    address: '{{ zt_vault_addr }}'
+    private: '{{ zt_private }}'
+    path: database/config/postgres
+    kind: database
+    desired:
+      plugin_name: postgresql-database-plugin
+      allowed_roles: >-
+        {{ ["app-role"] + (["viewer-read", "support-read", "admin-read"] if "roles" in zt_features else [])
+        + (["support-write"] if "ciba" in zt_features else []) }}
+      connection_url: 'postgresql://{% raw %}{{username}}:{{password}}{% endraw %}@db:5432/appdb?sslmode=disable'
+      username: appuser
+      password: apppassword
+      verify_connection: true
+  when: '"database" in zt_features'
+- name: Define database role configuration
+  ansible.builtin.set_fact:
+    zt_db_roles: >-
+      {{ ["app-role"] + (["viewer-read", "support-read", "admin-read"] if "roles" in zt_features else [])
+      + (["support-write"] if "ciba" in zt_features else []) }}
+- name: Reconcile dynamic database roles
+  zt_vault:
+    address: '{{ zt_vault_addr }}'
+    private: '{{ zt_private }}'
+    path: 'database/roles/{{ item }}'
+    desired:
+      db_name: postgres
+      default_ttl: '{{ 300 if item == "support-write" else 120 }}'
+      max_ttl: '{{ 900 if item == "support-write" else 600 }}'
+      creation_statements:
+        - >-
+          CREATE ROLE "{% raw %}{{name}}{% endraw %}" WITH LOGIN PASSWORD '{% raw %}{{password}}{% endraw %}' VALID UNTIL '{% raw %}{{expiration}}{% endraw %}'
+          {{ (' IN ROLE "' + item + '"') if item != 'app-role' else '' }};
+          GRANT USAGE ON SCHEMA public TO "{% raw %}{{name}}{% endraw %}";
+          GRANT {{ 'SELECT, INSERT, UPDATE, DELETE' if item == 'app-role' else ('SELECT, UPDATE' if item == 'support-write' else 'SELECT') }} ON
+          {{ 'users, orders' if item == 'viewer-read' else ('orders' if item == 'support-write' else 'ALL TABLES IN SCHEMA public') }}
+          TO "{% raw %}{{name}}{% endraw %}";
+          {{ 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "{{name}}";' if item == 'app-role' else '' }}
+      revocation_statements:
+        - 'DROP OWNED BY "{% raw %}{{name}}{% endraw %}"; DROP ROLE IF EXISTS "{% raw %}{{name}}{% endraw %}";'
+  loop: '{{ zt_db_roles }}'
+  when: '"database" in zt_features'
+- name: Reconcile JWT trust configuration
+  zt_vault:
+    address: '{{ zt_vault_addr }}'
+    private: '{{ zt_private }}'
+    path: auth/jwt/config
+    desired:
+      jwks_url: http://keycloak:8080/realms/zero-trust/protocol/openid-connect/certs
+      bound_issuer: http://keycloak:8080/realms/zero-trust
+  when: '"jwt" in zt_features'
+- name: Reconcile backend JWT login role
+  zt_vault:
+    address: '{{ zt_vault_addr }}'
+    private: '{{ zt_private }}'
+    path: auth/jwt/role/zero-trust-jwt-lab
+    desired:
+      role_type: jwt
+      bound_audiences: [account]
+      user_claim: email
+      token_policies: [zero-trust-jwt-lab]
+      token_ttl: 900
+      token_max_ttl: 3600
+  when: '"jwt" in zt_features'
+- name: Validate and deliver runtime identities without repeat issuance
+  zt_credentials:
+    address: '{{ zt_vault_addr }}'
+    private: '{{ zt_private }}'
+    features: '{{ zt_features }}'

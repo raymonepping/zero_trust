@@ -1,0 +1,21 @@
+---
+- name: Wait for LDAP listener
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: '{{ zt_port_base + 89 }}'
+    timeout: 120
+
+- name: Reconcile LDAP entries individually without resetting existing passwords
+  zt_ldap:
+    runtime: '{{ zt_runtime }}'
+    compose: '{{ zt_compose }}'
+    file: '{{ zt_private }}/compose.yml'
+    project: '{{ zt_project }}'
+    ldif: '{{ zt_root }}/ldap/bootstrap.ldif'
+
+- name: Reconcile Keycloak realm, federation and clients
+  zt_keycloak:
+    address: '{{ zt_keycloak_addr }}'
+    private: '{{ zt_private }}'
+    features: '{{ zt_features }}'
+    frontend_port: '{{ zt_port_base + 88 }}'

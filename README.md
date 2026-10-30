@@ -1,5 +1,19 @@
 # Zero Trust Workshop
 
+## Ansible and Terraform lab workflow
+
+The migration adds separate `prepare`, `resolve` and behavioral `verify` commands for all ten recommended labs. Start with the [automation guide](docs/automation/usage.md) and [student labs](labs/README.md). The [validation report](docs/automation/validation.md) records actual support and remaining gates.
+
+```sh
+make deps                         # Python 3.14, Terraform and a Compose runtime
+make prepare LAB=01 RUNTIME=podman
+make resolve lab 02 RUNTIME=podman
+make verify LAB=02 RUNTIME=podman
+```
+
+Vault Enterprise uses `VAULT_LICENSE` from `.env`, passed directly to the container environment. Tracked `config/defaults.env` loads first, then `.env`, matching `vault_reference`. New automation has a dedicated Compose project, separate volumes and learner files under `.build/<INSTANCE>/backend/`; it preserves the original environment and connector. Legacy shell instructions below apply to the original Compose path. Use one path per instance.
+
+
 Hands-on labs for moving an application from hardcoded credentials to short-lived, role-scoped, user-aware, and approval-gated access patterns using:
 
 - PostgreSQL
